@@ -6,6 +6,7 @@ import base64
 import json
 import os
 import re
+import time
 from pathlib import Path
 
 BASE = "https://mc-launcher.webapp.163.com/"
@@ -14,6 +15,44 @@ UPLOAD_DEFAULT = "https://fp.ps.netease.com/x19/file/new/"
 
 class ApiError(Exception):
     pass
+
+
+class DetailValidationError(ApiError):
+    """详情预检/回读验证失败（转浏览器自动化也救不了，直接中止不兜底）。"""
+
+
+# ---- 详情编辑器限制与护栏（2026-10-26 线上实测，口径=Quill 编辑器字数） ----
+DETAIL_BUDGET = 404        # 实测可完整保存的上限（平台≈405）；超了会被**静默截断吞图**
+DETAIL_IMGS = 10           # 详情图片上限（超图数平台报错拒收）
+PC_DETAIL_BUDGET = 1000    # PC 详情（sync_item_info.info）编辑器标 x/1000
+
+
+def editor_len(html):
+    """Quill 编辑器字数口径：纯文本字符 + 块级(<p>/<br>) + 每图 1"""
+    text = re.sub(r"<[^>]+>", "", html)
+    blocks = len(re.findall(r"<p[ >]", html)) + html.count("<br")
+    return len(text) + blocks + html.count("<img")
+
+
+def sanitize_detail_html(html):
+    """已知报错标签自动矫正：<b> → <strong>（平台报「非法字符: bad tag: b」）；
+    其余标签（em/u 等，线上详情可见）不动，避免误伤既有内容。"""
+    return re.sub(r"<(/?)b(?=[\s>/])", r"<\1strong", html, flags=re.I)
+
+
+def validate_detail_html(html, budget=DETAIL_BUDGET, imgs_limit=DETAIL_IMGS):
+    """发布护栏：超图数报错（平台拒收）、超字数报错（平台会静默截断吞图）。
+    返回 (图数, 字数)。"""
+    n_img = html.count("<img")
+    ln = editor_len(html)
+    if n_img > imgs_limit:
+        raise DetailValidationError(
+            "详情 %d 张图，超上限 %d（平台拒收）" % (n_img, imgs_limit))
+    if ln > budget:
+        raise DetailValidationError(
+            "详情约 %d 字（Quill 口径）超上限 %d，超了会被静默截断吞图——"
+            "请压缩正文或减少图片" % (ln, budget))
+    return n_img, ln
 
 
 def _no_login(j):
@@ -100,12 +139,27 @@ class Api(object):
         return self._req("GET", path, params=params or None)
 
     def post(self, path, body):
-        return self._req("POST", path, data=json.dumps(body),
-                         multipart=None) if False else self._req(
-            "POST", path, data=json.dumps(body))
+        return self._req("POST", path, data=json.dumps(body))
 
     def put(self, path, body=None):
         return self._req("PUT", path, data=json.dumps(body or {}))
+
+    def _retry_write(self, fn, attempts=3):
+        """写操作自动重试：网络抖动 / HTTP 5xx / 429（间隔 1s → 2.5s）。
+        业务性拒绝（接口错误 status=…）不重试，避免重复提交。"""
+        delay = 1.0
+        for i in range(attempts):
+            try:
+                return fn()
+            except ApiError as e:
+                if not (str(e).startswith("HTTP 5") or str(e).startswith("HTTP 429")) \
+                        or i == attempts - 1:
+                    raise
+            except Exception:
+                if i == attempts - 1:
+                    raise
+            time.sleep(delay)
+            delay *= 2.5
 
     # ---- 读 ----
     def user_info(self):
@@ -209,12 +263,14 @@ class Api(object):
 
     # ---- 写（UI显式触发） ----
     def update_item(self, item_id, body):
-        return self.post("items/categories/pe/%s/update" % item_id, body)
+        return self._retry_write(lambda: self.post(
+            "items/categories/pe/%s/update" % item_id, body))
 
     def apply_review(self, item_id, text=""):
-        return self.put("items/categories/pe/%s/apply_review" % item_id,
-                        {"apply_review_text": text, "conflict_notify": 0,
-                         "is_check_apply": False})
+        return self._retry_write(lambda: self.put(
+            "items/categories/pe/%s/apply_review" % item_id,
+            {"apply_review_text": text, "conflict_notify": 0,
+             "is_check_apply": False}))
 
 
 # ============ detail → update body（对齐 McDevManager toWorkUpdateDTO 矫正） ============

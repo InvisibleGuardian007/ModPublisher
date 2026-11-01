@@ -415,6 +415,10 @@ class Host(object):
         if rid and detail is not None:
             try:
                 return self._api_publish(rid, mod, detail, p)
+            except PA.DetailValidationError as e:
+                # 校验/回读失败转浏览器也一样被拒或截断，直接抛给调用方
+                self.js_log("[API] %s" % e)
+                raise
             except Exception as e:
                 self.js_log("[API] 发布失败转浏览器: %s" % e)
         # 浏览器兜底
@@ -448,6 +452,17 @@ class Host(object):
                 "pe_game_introduction"
                 if "<p>" in (detail.get("pe_game_introduction") or "") else "info")
             changes[key] = p["detail_html"]
+        # ---- 发布护栏：详情标签矫正 + 字数/图数校验（先失败，不浪费上传） ----
+        det_key = p.get("detail_key") if p.get("detail_html") else None
+        for k in ("pe_game_introduction", "info"):
+            v = changes.get(k)
+            if isinstance(v, str) and "<" in v:
+                v = PA.sanitize_detail_html(v)
+                n_img, ln = PA.validate_detail_html(v)
+                changes[k] = v
+                det_key = det_key or k
+                self.js_log("[API] 详情校验 %s：%d字/%d图（上限 %d/%d）"
+                            % (k, ln, n_img, PA.DETAIL_BUDGET, PA.DETAIL_IMGS))
         zip_name = None
         if p.get("zip"):
             def prog(frac, msg):
@@ -466,9 +481,52 @@ class Host(object):
         body = PA.build_update_body(detail, changes)
         self.api.update_item(rid, body)
         self.js_log("[API] 保存成功（update）")
-        return {"res_version": detail.get("item_version"),
-                "zip": zip_name or ((detail.get("res") or [{}])[0]
-                                    .get("res_name") if detail.get("res") else None)}
+        r = self._verify_publish(rid, detail, changes, det_key, zip_name)
+        r.setdefault("zip", zip_name or ((detail.get("res") or [{}])[0]
+                                         .get("res_name") if detail.get("res") else None))
+        return r
+
+    def _verify_publish(self, rid, old_detail, changes, key, zip_name):
+        """update 后立即回读验证：平台对超预算详情**静默截断吞图**、包替换失败均无报错，
+        只有回读能发现。异常等 2 秒复查一次（排除读延迟）再判死。
+        返回回执（新旧版本号、详情字数/图数、落库包名）。"""
+        sent_html = (changes.get(key) or "") if key else ""
+        sent_imgs = sent_html.count("<img")
+        sent_len = PA.editor_len(sent_html) if sent_html else 0
+        d = self.api.detail(rid)
+        truncated = zip_bad = False
+        got_zip = ""
+        for attempt in (1, 2):
+            html2 = (d.get(key) or "") if key else ""
+            res0 = (d.get("res") or [{}])[0] if isinstance(d.get("res"), list) else {}
+            got_zip = os.path.basename(res0.get("res_name") or "")
+            truncated = bool(sent_html) and (
+                html2.count("<img") < sent_imgs
+                or PA.editor_len(html2) < sent_len - 2)
+            zip_bad = bool(zip_name) and got_zip != zip_name
+            if not truncated and not zip_bad:
+                new_ver = str(d.get("item_version") or "")
+                old_ver = str(old_detail.get("item_version") or "")
+                if changes.get("add_version") and new_ver == old_ver:
+                    self.js_log("[警告] 回读版本仍为 %s，平台可能未提升版本" % new_ver)
+                return {"res_version": new_ver or old_ver,
+                        "old_version": old_ver,
+                        "detail_len": PA.editor_len(html2) if sent_html else None,
+                        "detail_imgs": html2.count("<img") if sent_html else None,
+                        "zip": got_zip or None}
+            if attempt == 1:
+                self.js_log("[API] 回读异常（截断=%s 包=%s），2 秒后复查…"
+                            % (truncated, got_zip or "无"))
+                time.sleep(2)
+                d = self.api.detail(rid)
+        if truncated:
+            html2 = (d.get(key) or "") if key else ""
+            raise PA.DetailValidationError(
+                "回读验证失败：详情被平台静默截断（图 %d→%d、字 %d→%d），"
+                "大概率超字数上限" % (sent_imgs, html2.count("<img"),
+                                    sent_len, PA.editor_len(html2)))
+        raise PA.DetailValidationError(
+            "回读验证失败：平台包仍为 %r，期望 %r" % (got_zip, zip_name))
 
     def rpc_submit(self, p):
         name = p.get("name")
@@ -706,6 +764,8 @@ class Host(object):
             detail = self.api.detail(rid)
             si = detail.get("sync_item_info")
             si = dict(si) if isinstance(si, dict) else {}
+            html = PA.sanitize_detail_html(html)
+            PA.validate_detail_html(html, budget=PA.PC_DETAIL_BUDGET)
             si["info"] = html
             detail["sync_item_info"] = si
             body = PA.build_update_body(detail, {"sync_item_info": si})
@@ -728,6 +788,7 @@ class Host(object):
             if not ("<p>" in html or "<img" in html):
                 html = ""
             html = html + '<p><img src="%s"></p>' % url
+            PA.validate_detail_html(html)  # 超限会静默截断吞图，先失败
             detail[key] = html
             body = PA.build_update_body(detail, {key: html})
             self.api.update_item(rid, body)

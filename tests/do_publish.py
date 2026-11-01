@@ -54,11 +54,8 @@ PC_BANNER = ("<p><strong style=\"font-size:18px;\">📢 %s 更新日志"
 _UPDATE_TITLE = re.compile(r"^📢?\s*[0-9.]*\s*更新(日志)?.*$")
 
 
-def editor_len(html):
-    """Quill 编辑器字数口径：纯文本字符 + 块级(<p>/<br>) + 每图 1"""
-    text = re.sub(r"<[^>]+>", "", html)
-    blocks = len(re.findall(r"<p[ >]", html)) + html.count("<br")
-    return len(text) + blocks + html.count("<img")
+# Quill 字数口径统一在 publish_api.editor_len（tests/test_detail_recipe.py 有口径自检）
+editor_len = PA.editor_len
 
 
 def strip_trailing_update_title(prefix):

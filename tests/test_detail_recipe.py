@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import do_publish as DP  # noqa: E402
+import publish_api as PA  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 URL = "https://x19.fp.ps.netease.com/file/test-placeholder"
@@ -63,9 +64,33 @@ if dump.exists():
     live_len = DP.editor_len(live)
     prefix, built = assemble(live)
     ok &= check("线上字数=404", live_len == 404, str(live_len))
+    ok &= check("publish_api 同口径", PA.editor_len(live) == live_len,
+                str(PA.editor_len(live)))
     ok &= check("前缀 372 字", DP.editor_len(prefix) == 372, str(DP.editor_len(prefix)))
     ok &= check("重组后仍 404", DP.editor_len(built) == 404, str(DP.editor_len(built)))
     ok &= check("重组后仍 10 图", built.count("<img") == 10)
+
+print("[publish_api 护栏]")
+# 口径已知值：文本2 + 块级3（<p>×2、<br>×1）+ 图1 = 6
+sample = '<p>ab<br></p><p><img src="%s"></p>' % URL
+ok &= check("editor_len 已知值=6", PA.editor_len(sample) == 6, str(PA.editor_len(sample)))
+s = PA.sanitize_detail_html('<b>加粗</b><B >注</B><br/><body>o</body>')
+ok &= check("<b>全部转strong", "<b>" not in s and "<B" not in s and s.count("<strong") == 2, s)
+ok &= check("不误伤 body/br", "<body>" in s and "<br/>" in s, s)
+try:
+    PA.validate_detail_html("<p>" + "a" * 500 + "</p>")
+    ok &= check("超字数报错", False)
+except PA.DetailValidationError:
+    ok &= check("超字数报错", True)
+try:
+    PA.validate_detail_html('<p><img src="%s"></p>' % URL * 11)
+    ok &= check("超图数报错", False)
+except PA.DetailValidationError:
+    ok &= check("超图数报错", True)
+n, ln = PA.validate_detail_html(
+    NEW_SHORT + "".join('<p><img src="%s"></p>' % URL for _ in GAL))
+ok &= check("合法内容放行(10图)", n == 10 and ln <= DP.DETAIL_BUDGET,
+            "%d图 %d字" % (n, ln))
 
 print("\n=== %s ===" % ("全部通过" if ok else "存在失败项"))
 sys.exit(0 if ok else 1)

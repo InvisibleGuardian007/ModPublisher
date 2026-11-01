@@ -112,6 +112,9 @@ py -3 -m PyInstaller --onefile --windowed --name 网易模组发布器 ^
 - 提升版本 = `res[0].add_version`
 - 详情字数：编辑器按 Quill 长度计（**图片占 1 字**），PE 详情上限≈405-420 字、图片≤10 张；
   超字数静默截断（吞图不报错），超图数报错；富文本白名单 `p/strong/span/br/img`（`<b>` 报非法字符）
+- 发布管线护栏（publish_api/mod_publisher）：发布前 `<b>`→`<strong>` 矫正 + 字数/图数校验，
+  超限**直接报错不发布**（不再静默截断）；update/提审对 5xx/429/网络抖动自动重试 ×2；
+  update 后回读验证（详情被截断/包未替换立即报错），`DetailValidationError` 不走浏览器兜底
 - 鉴权为轮换票据：所有请求经常驻平台域的停靠页 `fetch` 发出，
   由浏览器原生管理 cookie 轮换（静态导出 cookie 会被轮换挤掉失效）
 
