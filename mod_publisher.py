@@ -9,7 +9,6 @@ import sys
 import subprocess
 import threading
 import time
-from ctypes import wintypes
 from pathlib import Path
 
 import publish_api as PA
@@ -26,65 +25,6 @@ else:
     UI_FILE = Path(__file__).resolve().parent / "ui.html"
 
 
-# ================= Win32 嵌入 =================
-def _enum_windows():
-    res = []
-
-    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-    def cb(h, _l):
-        res.append(h)
-        return True
-    ctypes.windll.user32.EnumWindows(cb, 0)
-    return res
-
-
-def _win_pid(h):
-    p = wintypes.DWORD()
-    ctypes.windll.user32.GetWindowThreadProcessId(h, ctypes.byref(p))
-    return p.value
-
-
-def _win_class(h):
-    buf = ctypes.create_unicode_buffer(64)
-    ctypes.windll.user32.GetClassNameW(h, buf, 64)
-    return buf.value
-
-
-def find_edge_main_hwnd(profile_dir):
-    marker = "%s*profile*" % os.path.basename(
-        os.path.dirname(str(profile_dir).rstrip("/\\")))
-    try:
-        out = __import__("subprocess").run(
-            ["powershell", "-NoProfile", "-Command",
-             "Get-CimInstance Win32_Process -Filter \"name='msedge.exe'\" | Where-Object "
-             "{ $_.CommandLine -like '*%s*' -and $_.CommandLine -notlike '*--type=*' } "
-             "| Select-Object -ExpandProperty ProcessId" % marker],
-            capture_output=True, text=True, timeout=15)
-        pids = [int(x) for x in (out.stdout or "").split()]
-    except Exception:
-        pids = []
-    for h in _enum_windows():
-        if _win_pid(h) in pids and ctypes.windll.user32.IsWindowVisible(h):
-            if _win_class(h) == "Chrome_WidgetWin_1":
-                return h
-    return None
-
-
-def embed_into(host, hwnd):
-    user32 = ctypes.windll.user32
-    style = user32.GetWindowLongW(hwnd, -16)
-    style &= ~(0x00C00000 | 0x00040000 | 0x00020000 | 0x00010000 | 0x80000000)
-    style |= 0x40000000 | 0x10000000
-    user32.SetWindowLongW(hwnd, -16, style)
-    user32.SetParent(hwnd, host.winfo_id())
-    fit(host, hwnd)
-
-
-def fit(host, hwnd):
-    ctypes.windll.user32.SetWindowPos(
-        hwnd, 0, 0, 0, host.winfo_width(), host.winfo_height(), 0x0040)
-
-
 class Host(object):
     """引擎+API+RPC。专用引擎线程拥有全部 Playwright 对象（同步API线程约束）；
     绑定/外部调用经 submit() 投递到该线程串行执行，避免嵌套死锁。"""
@@ -92,7 +32,7 @@ class Host(object):
     def __init__(self, cfg, log=lambda m: None):
         self.cfg = cfg
         self.log = log
-        self.api = PA.Api()
+        self.api = PA.Api(log=self.js_log)
         self.eng = None
         self.page = None
         self.rows = []          # [(name, rid)]
@@ -324,7 +264,6 @@ class Host(object):
                         fields[k] = v
                     else:
                         fields[k] = json.dumps(v, ensure_ascii=False)
-                chans = []
                 si_raw = d.get("sync_item_info") or {}
                 si = json.loads(si_raw) if isinstance(si_raw, str) else si_raw
                 pc_chans = []
@@ -412,6 +351,13 @@ class Host(object):
         mod = self._mod(name)
         rid = self._rid(name)
         detail = self.detail_cache.get(name)
+        if rid and detail is None:
+            # 缓存缺失（界面未先“读取”）时现拉详情，避免误入浏览器兜底慢通道
+            try:
+                detail = self.api.detail(rid)
+                self.detail_cache[name] = detail
+            except Exception as e:
+                self.js_log("[API] 详情拉取失败: %s" % e)
         if rid and detail is not None:
             try:
                 return self._api_publish(rid, mod, detail, p)
@@ -801,8 +747,6 @@ class Host(object):
         p = {"name": name, "zip": zip_, "boost": boost,
              "item_name": None, "update_summary": note,
              "activity_desc": None, "pc_intro": None, "detail_html": None}
-        if note:
-            p["note"] = note
 
         def job():
             detail = self.api.detail(rid)
@@ -919,6 +863,7 @@ class Host(object):
 def run_cmd(argv):
     """agent 直接驱动（优先复用常驻 exe 的活会话，否则本地无头起引擎）：
     --cmd list | read <作品名> | set <作品名> --json '{..}'
+      | set-pc <作品名> --json '"<p>..PC详情HTML..</p>"'
       | add-image <作品名> --img <路径>
       | publish <作品名> [--no-zip] [--no-boost] [--submit] [--note 文本]
       | submit <作品名> [--note 文本]
@@ -950,6 +895,8 @@ def run_cmd(argv):
     # 1) 常驻实例可用 → 走它的活会话
     endpoint = {"list": ("list", {}), "read": ("read", {"name": name}),
                 "set": ("set", {"name": name, "changes": json.loads(a.json or "{}")}),
+                "set-pc": ("set-pc", {"name": name,
+                                      "html": json.loads(a.json or '""')}),
                 "add-image": ("add-image", {"name": name, "image": a.img}),
                 "publish": ("publish", {"name": name, "zip": not a.no_zip,
                                         "boost": not a.no_boost,
@@ -1062,7 +1009,7 @@ def main():
         return
     try:
         port = host.serve_http(8765)
-        host.js_log("[Agent API] http://127.0.0.1:%d （list/read/set/add-image/publish/submit）" % port)
+        host.js_log("[Agent API] http://127.0.0.1:%d （list/read/set/set-pc/add-image/publish/submit）" % port)
     except Exception as e:
         host.js_log("[Agent API] 启动失败: %s" % e)
     if "--reside" in sys.argv:

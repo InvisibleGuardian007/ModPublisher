@@ -37,7 +37,7 @@
 
 **Agent 接口**（exe 运行时常驻开放）
 
-- HTTP：`http://127.0.0.1:8765`，`POST /list /read /set /add-image /publish /submit`
+- HTTP：`http://127.0.0.1:8765`，`POST /list /read /set /set-pc /add-image /publish /submit`
 - CLI：`网易模组发布器.exe --cmd ...`（自动优先代理到常驻实例的活会话）
 
 示例：
@@ -49,6 +49,8 @@
 网易模组发布器.exe --cmd read "趣味附魔 - 共162个附魔"
 # 修改字段并保存
 网易模组发布器.exe --cmd set "趣味附魔 - 共162个附魔" --json "{\"item_name\":\"趣味附魔 - 共242个附魔\"}"
+# 设置 PC 详情（sync_item_info.info，与 PE 详情是两份独立富文本）
+网易模组发布器.exe --cmd set-pc "趣味附魔 - 共162个附魔" --json "\"<p><strong>📢26.10.26更新</strong></p>\""
 # 插入图片到详情末尾
 网易模组发布器.exe --cmd add-image "趣味附魔 - 共162个附魔" --img D:/pics/1.png
 # 打包+上传+保存（可选 --submit 一并提审）

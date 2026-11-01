@@ -210,18 +210,22 @@ class Api(object):
         body = ""
         status = 0
         if self._page is not None:
-            js = """async ([url, token, name, mime, b64]) => {
-                const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-                const fd = new FormData();
-                fd.append('Authorization', token);
-                fd.append('fpfile', new Blob([bytes], {type: mime}), name);
-                const r = await fetch(url, {method: 'POST', body: fd});
-                return {status: r.status, text: await r.text(),
-                        sign: r.headers.get('x-ntes-signature')};
-            }"""
-            r = self._page.evaluate(js, [upload_url, token, Path(file_path).name,
-                                         mime, _b64.b64encode(data).decode()])
-            status, body, sign = r["status"], r["text"], r.get("sign")
+            try:
+                js = """async ([url, token, name, mime, b64]) => {
+                    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+                    const fd = new FormData();
+                    fd.append('Authorization', token);
+                    fd.append('fpfile', new Blob([bytes], {type: mime}), name);
+                    const r = await fetch(url, {method: 'POST', body: fd});
+                    return {status: r.status, text: await r.text(),
+                            sign: r.headers.get('x-ntes-signature')};
+                }"""
+                r = self._page.evaluate(js, [upload_url, token, Path(file_path).name,
+                                             mime, _b64.b64encode(data).decode()])
+                status, body, sign = r["status"], r["text"], r.get("sign")
+            except Exception as e:
+                # 大文件 base64 可能超 CDP 载荷上限/页面超时：直接落回退通道
+                self.log("页面直传异常(%s)，转 ctx.request 回退" % str(e)[:80])
         if status != 200 or not sign:
             # 回退：ctx.request 直传（部分响应头跨域不可读时）
             rr = self._ctx.request.post(

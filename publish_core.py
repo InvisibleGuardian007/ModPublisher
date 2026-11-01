@@ -6,9 +6,7 @@ import os
 import re
 import subprocess
 import sys
-import threading
 import time
-import queue
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -586,68 +584,3 @@ class BrowserEngine(object):
                     "() => { const e = document.querySelector('.ql-editor'); return e ? e.innerHTML : ''; }")
                 return html
         raise RuntimeError("详情图片上传超时（20秒未见变化）")
-
-
-# ============ 常驻工作线程 ============
-class Worker(object):
-    """UI 线程把 (fn, args) 丢进队列，本线程串行执行；结果/日志经 ui_q 回传。"""
-
-    def __init__(self, ui_q):
-        self.ui_q = ui_q
-        self.cmds = queue.Queue()
-        self.answers = {}
-        self.engine = None
-        self.busy = False
-        self._stop = threading.Event()
-        self.thread = threading.Thread(target=self._run, daemon=True)
-        self.thread.start()
-
-    # -- 供 UI 线程调用 --
-    def post(self, fn, *args):
-        self.cmds.put((fn, args))
-
-    def ask(self, title, message):
-        """在工作线程里阻塞等待 UI 弹窗的 yes/no 答案。"""
-        ev = threading.Event()
-        self.ui_q.put(("ask", (title, message, ev)))
-        while not ev.wait(0.2):
-            if self._stop.is_set():
-                return False
-        return self.answers.pop(ev, False)
-
-    def stop(self):
-        self._stop.set()
-        self.cmds.put((None, ()))
-
-    # -- 线程体 --
-    def _emit(self, kind, payload):
-        self.ui_q.put((kind, payload))
-
-    def _log(self, msg):
-        self._emit("log", "[引擎] %s" % msg)
-
-    def _run(self):
-        while not self._stop.is_set():
-            try:
-                fn, args = self.cmds.get(timeout=0.3)
-            except queue.Empty:
-                continue
-            if fn is None:
-                break
-            self.busy = True
-            self._emit("busy", True)
-            try:
-                fn(*args)
-                self._emit("done", None)
-            except Exception as e:
-                self._emit("error", "%s: %s" % (type(e).__name__, e))
-            self.busy = False
-            self._emit("busy", False)
-
-    # -- 引擎操作（必须在工作线程执行） --
-    def ensure_engine(self, cfg):
-        if self.engine is None or self.engine.cfg != cfg:
-            if self.engine:
-                self.engine.close()
-            self.engine = BrowserEngine(cfg, self._emit)
-        return self.engine
