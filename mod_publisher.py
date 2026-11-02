@@ -9,6 +9,7 @@ import sys
 import subprocess
 import threading
 import time
+from ctypes import wintypes
 from pathlib import Path
 
 import publish_api as PA
@@ -23,6 +24,52 @@ if getattr(sys, "frozen", False):
     UI_FILE = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "ui.html"
 else:
     UI_FILE = Path(__file__).resolve().parent / "ui.html"
+
+
+# ================= 已运行实例的窗口定位/调出 =================
+def _win_class(h):
+    buf = ctypes.create_unicode_buffer(64)
+    ctypes.windll.user32.GetClassNameW(h, buf, 64)
+    return buf.value
+
+
+def _publisher_edge_pids():
+    marker = "%s*profile*" % core.APP_DIR.name
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "Get-CimInstance Win32_Process -Filter \"name='msedge.exe'\" | Where-Object "
+             "{ $_.CommandLine -like '*%s*' -and $_.CommandLine -notlike '*--type=*' } "
+             "| Select-Object -ExpandProperty ProcessId" % marker],
+            capture_output=True, text=True, timeout=15)
+        return [int(x) for x in (out.stdout or "").split()]
+    except Exception:
+        return []
+
+
+def focus_publisher_window():
+    """把已运行实例的发布器 Edge 主窗口调到前台（重复启动时用）。"""
+    user32 = ctypes.windll.user32
+    pids = set(_publisher_edge_pids())
+    hit = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def cb(h, _l):
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(h, ctypes.byref(pid))
+        if pid.value in pids and user32.IsWindowVisible(h) \
+                and _win_class(h) == "Chrome_WidgetWin_1":
+            hit.append(h)
+            return False
+        return True
+
+    user32.EnumWindows(cb, 0)
+    if not hit:
+        return False
+    user32.ShowWindow(hit[0], 9)          # SW_RESTORE
+    user32.SwitchToThisWindow(hit[0], True)
+    user32.SetForegroundWindow(hit[0])
+    return True
 
 
 class Host(object):
@@ -128,16 +175,9 @@ class Host(object):
         ctx = self.eng._ctx
         # 绑定与注入都放到 context 级：随页面导航持续生效
         ctx.expose_binding("__pyRequest", self._on_request)
-        # 会话恢复（崩溃/强杀后 Edge 会把上次标签原样带回）可能造成重复 UI 页，先归一
-        api_reused = self._dedupe_pages(ctx)
-        if not api_reused:
-            try:
-                self.api_page.goto("https://mcdev.webapp.163.com/",
-                                   wait_until="domcontentloaded", timeout=30000)
-                self.api_page.wait_for_timeout(3500)
-            except Exception:
-                pass
-        # 主页面 = 自制复刻界面（结构同官方编辑页，体验优化+底部自动化）
+        main, dock = self._dedupe_pages(ctx)
+        self.page = main
+        # 主页面先就位：窗口立刻显示发布器界面（不被停靠页加载等待挡在 about:blank）
         self.page.goto(UI_FILE.as_uri(), wait_until="domcontentloaded")
         self._ui_event = lambda kind, pj: self.page.evaluate(
             "([k,j])=>window.__mpEvent&&window.__mpEvent(k,j)", [kind, pj])
@@ -145,17 +185,37 @@ class Host(object):
             self.page.bring_to_front()
         except Exception:
             pass
+        # 停靠页：常驻平台域，API 全部经它 fetch（浏览器原生管理轮换cookie）
+        if dock is None:
+            dock = ctx.new_page()
+            try:
+                dock.goto("https://mcdev.webapp.163.com/",
+                          wait_until="domcontentloaded", timeout=30000)
+                dock.wait_for_timeout(3500)
+            except Exception:
+                pass
+        self.api_page = dock
         self.api.set_context(ctx, page=self.api_page)
         try:
             ctx.on("close", lambda _c: self._on_ctx_closed())
+            # 附加模式：窗口被用户关掉 = 连接断开，普通模式下进程随之退出
+            if self.eng._attached and self.eng._browser is not None:
+                self.eng._browser.on("disconnected", lambda *_: self._on_ctx_closed())
         except Exception:
             pass
         return self.eng
 
     def _dedupe_pages(self, ctx):
-        """崩溃/强杀后 Edge 会话恢复会把上次的 ui.html 标签带回（context 级绑定对恢复
-        标签同样生效，会重复引导 RPC），UI 页只保留一个；停靠页若仍活着则复用。
-        返回 api_page 是否复用（复用时不再重复 goto 平台域）。"""
+        """附加模式下浏览器里有用户的个人标签页，绝不劫持：
+        发布器 UI 页存在则复用（多余的去重），不存在就**新开一个追加在最后**；
+        平台停靠页同理，只复用确实是平台首页/登录页/列表页的（那是我们开的）。
+        返回 (主页面, 可复用的停靠页或 None)。"""
+        def _alive(pg):
+            try:
+                return not pg.is_closed()
+            except Exception:
+                return False
+
         ui_pages = [pg for pg in ctx.pages
                     if (pg.url or "").startswith(UI_FILE.as_uri())]
         for pg in ui_pages[1:]:
@@ -163,21 +223,23 @@ class Host(object):
                 pg.close()
             except Exception:
                 pass
-        self.page = ui_pages[0] if ui_pages else (
-            ctx.pages[0] if ctx.pages else ctx.new_page())
-        ap = self.api_page
-        try:
-            if ap is not None and not ap.is_closed() \
-                    and "mcdev.webapp.163.com" in (ap.url or ""):
-                return True
-        except Exception:
-            pass
-        self.api_page = ctx.new_page()
-        return False
+        main = ui_pages[0] if ui_pages else ctx.new_page()
+        _home = ("https://mcdev.webapp.163.com/")
+        dock = None
+        for pg in ctx.pages:
+            if pg is main or not _alive(pg):
+                continue
+            u = (pg.url or "")
+            if u == _home or u.startswith(_home + "#"):
+                dock = pg
+                break
+        return main, dock
 
     def _on_ctx_closed(self):
         """普通模式：窗口关 = 进程退出（否则僵尸进程占 8765，下次启动弹『已在运行中』）；
         --reside 常驻模式：不退出，下次接口调用自动重开。"""
+        if self._closed.is_set():
+            return
         if self.exit_on_close:
             self._closed.set()
             print("[引擎] 浏览器窗口已关闭，进程退出", flush=True)
@@ -959,16 +1021,7 @@ def run_cmd(argv):
                     pass
             return emit({"ok": False, "error": "%s %s" % (e, detail)})
 
-    # 2) 回退：本地无头（先清残留实例，避免票据回滚竞态）
-    try:
-        subprocess.run(["powershell", "-NoProfile", "-Command",
-                        "Get-CimInstance Win32_Process -Filter \"name='msedge.exe'\" | "
-                        "Where-Object { $_.CommandLine -like '*ModPublisher*profile*' } | "
-                        "ForEach-Object { Stop-Process -Id $_.ProcessId -Force "
-                        "-ErrorAction SilentlyContinue }"],
-                       capture_output=True, timeout=20)
-    except Exception:
-        pass
+    # 2) 回退：本地无头引擎（附加优先：已有窗口就复用它，无窗口才拉起无头实例）
     cfg = core.load_config()
     cfg["headless_browser"] = True
     host = Host(cfg)
@@ -1027,11 +1080,14 @@ def main():
     try:
         with _u.urlopen("http://127.0.0.1:8765/ping", timeout=2) as r:
             if r.status == 200:
-                box("发布器已在运行中。\n\n如界面被覆盖，请查看任务栏；"
+                focus_publisher_window()
+                box("发布器已在运行中，已为你调出窗口。\n\n"
                     "Agent API: http://127.0.0.1:8765")
                 return
     except Exception:
         pass
+
+    # 残留 Edge 清理由引擎负责（附加优先，仅杀无法附加的端口残留）
 
     host = Host(core.load_config())
     try:

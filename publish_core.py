@@ -168,6 +168,9 @@ class BrowserEngine(object):
         self.emit = emit          # emit(kind, payload) 回调（线程安全转发给UI）
         self._pw = None
         self._ctx = None
+        self._browser = None
+        self._attached = False    # True=CDP 附加（窗口复用，非 Playwright 托管）
+        self._popped = False      # True=本脚本拉起的 Edge 进程
         self.page = None
         self._editor_mod = None   # 当前停在编辑页的模组id
 
@@ -175,29 +178,114 @@ class BrowserEngine(object):
         self.emit("log", msg)
 
     # ---- 生命周期 ----
+    CDP = "http://127.0.0.1:9222"
+
+    @staticmethod
+    def _find_edge():
+        for base in (os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+                     os.environ.get("ProgramFiles", r"C:\Program Files"),
+                     os.environ.get("LocalAppData", "")):
+            p = Path(base) / "Microsoft/Edge/Application/msedge.exe"
+            if p.exists():
+                return str(p)
+        return None
+
+    @staticmethod
+    def _kill_stale():
+        """杀掉占着 profile 锁但没开调试端口的残留 Edge（无法附加，只能清掉）。"""
+        try:
+            subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 "Get-CimInstance Win32_Process -Filter \"name='msedge.exe'\" | "
+                 "Where-Object { $_.CommandLine -like '*%s*profile*' -and "
+                 "$_.CommandLine -notlike '*remote-debugging-port*' } | "
+                 "ForEach-Object { Stop-Process -Id $_.ProcessId -Force "
+                 "-ErrorAction SilentlyContinue }" % APP_DIR.name],
+                capture_output=True, timeout=20)
+        except Exception:
+            pass
+
+    def _cdp_alive(self, wait):
+        import urllib.request as _u
+        deadline = time.time() + wait
+        while time.time() < deadline:
+            try:
+                with _u.urlopen(self.CDP + "/json/version", timeout=1) as r:
+                    if r.status == 200:
+                        return True
+            except Exception:
+                time.sleep(0.4)
+        return False
+
+    def _connect(self, timeout=8000):
+        """CDP 附加并选定默认上下文（=浏览器自身 profile，登录态原样可用）。"""
+        b = self._pw.chromium.connect_over_cdp(self.CDP, timeout=timeout)
+        ctx = b.contexts[0] if b.contexts else None
+        if ctx is None:
+            b.close()
+            raise RuntimeError("Edge 无可用上下文")
+        self._browser = b
+        self._attached = True
+        self._ctx = ctx
+        self.page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        try:
+            b.on("disconnected", lambda *_: self.emit("browser_gone", None))
+        except Exception:
+            pass
+        self.emit("browser_up", None)
+
     def _ensure_browser(self):
         if self._ctx:
             return
-        self.log("启动浏览器（Edge）...")
         self._pw = sync_playwright().start()
-        PROFILE_DIR.mkdir(exist_ok=True)
-        self._ctx = self._pw.chromium.launch_persistent_context(
-            str(PROFILE_DIR), channel=self.cfg.get("browser_channel", "msedge"),
-            headless=bool(self.cfg.get("headless_browser", False)),
-            viewport={"width": 1440, "height": 960},
-            args=["--window-position=20,20", "--window-size=1360,1000",
-                  # 固定调试端口：测试/Agent 脚本一律附加到这个已打开的 Edge，不另开浏览器
-                  "--remote-debugging-port=9222",
-                  # 强杀/崩溃后不弹「恢复页面」气泡（标签去重由 Host._dedupe_pages 负责）
-                  "--hide-crash-restore-bubble"],
-        )
-        self.page = self._ctx.pages[0] if self._ctx.pages else self._ctx.new_page()
-        self.emit("browser_up", None)
-
-    def close(self):
+        # 1) 附加优先：窗口还开着（哪怕上次脚本已退出）就原样接管，绝不新开窗口
         try:
-            if self._ctx:
-                self._ctx.close()
+            self._connect(timeout=3000)
+            self.log("已附加到现有发布器窗口（窗口复用）")
+            return
+        except Exception:
+            pass
+        # 2) 拉起独立 Edge 进程（不经 Playwright 托管：脚本退出窗口仍在，
+        #    下次启动附加复用——同一窗口反复使用，只有关窗后才会新开）
+        self._kill_stale()
+        exe = self._find_edge()
+        if not exe:
+            raise RuntimeError("未找到 msedge.exe，请安装 Microsoft Edge")
+        args = [exe,
+                "--remote-debugging-port=9222",
+                "--user-data-dir=%s" % PROFILE_DIR,
+                "--window-position=20,20", "--window-size=1360,1000",
+                "--hide-crash-restore-bubble", "--no-first-run",
+                "--no-default-browser-check"]
+        if bool(self.cfg.get("headless_browser", False)):
+            args.append("--headless=new")
+        args.append("about:blank")
+        self._popped = True
+        subprocess.Popen(args)
+        if not self._cdp_alive(30):
+            raise RuntimeError("Edge 启动超时（9222 未就绪）")
+        self._connect()
+        self.log("浏览器已启动（窗口常驻，脚本重启自动复用）")
+
+    def close(self, kill=None):
+        """断开连接。kill=None 时自动判断：仅清理本脚本拉起的无头实例；
+        有头窗口一律保留（用户手动关窗，下次启动复用同一窗口）。"""
+        if kill is None:
+            kill = bool(self._popped) and bool(self.cfg.get("headless_browser", False))
+        if kill:
+            try:
+                subprocess.run(
+                    ["powershell", "-NoProfile", "-Command",
+                     "Get-CimInstance Win32_Process -Filter \"name='msedge.exe'\" | "
+                     "Where-Object { $_.CommandLine -like '*%s*profile*' } | "
+                     "ForEach-Object { Stop-Process -Id $_.ProcessId -Force "
+                     "-ErrorAction SilentlyContinue }" % APP_DIR.name],
+                    capture_output=True, timeout=20)
+            except Exception:
+                pass
+        try:
+            if self._browser:
+                self._browser.close()   # CDP 连接模式：仅断开，不杀浏览器
         except Exception:
             pass
         try:
@@ -206,6 +294,7 @@ class BrowserEngine(object):
         except Exception:
             pass
         self._ctx = None
+        self._browser = None
         self._pw = None
         self.page = None
         self._editor_mod = None
