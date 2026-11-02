@@ -43,6 +43,7 @@ class Host(object):
         self._ready = threading.Event()
         self._ui_event = None
         self._closed = threading.Event()
+        self.exit_on_close = True   # --reside 常驻模式置 False：关窗不退出，自动重开
         self._start_err = None
 
     # ---------- 引擎线程 ----------
@@ -126,11 +127,6 @@ class Host(object):
         ctx = self.eng._ctx
         # 绑定与注入都放到 context 级：随页面导航持续生效
         ctx.expose_binding("__pyRequest", self._on_request)
-        try:
-            ctx.on("close", lambda _c: print(
-                "[引擎] 浏览器窗口已关闭；下次接口调用自动重开", flush=True))
-        except Exception:
-            pass
         # 停靠页：常驻平台域，API 全部经它 fetch（浏览器原生管理轮换cookie）
         self.api_page = ctx.new_page()
         try:
@@ -149,7 +145,20 @@ class Host(object):
         except Exception:
             pass
         self.api.set_context(ctx, page=self.api_page)
+        try:
+            ctx.on("close", lambda _c: self._on_ctx_closed())
+        except Exception:
+            pass
         return self.eng
+
+    def _on_ctx_closed(self):
+        """普通模式：窗口关 = 进程退出（否则僵尸进程占 8765，下次启动弹『已在运行中』）；
+        --reside 常驻模式：不退出，下次接口调用自动重开。"""
+        if self.exit_on_close:
+            self._closed.set()
+            print("[引擎] 浏览器窗口已关闭，进程退出", flush=True)
+        else:
+            print("[引擎] 浏览器窗口已关闭；下次接口调用自动重开", flush=True)
 
     def _back_to_ui(self):
         try:
@@ -1015,6 +1024,7 @@ def main():
     if "--reside" in sys.argv:
         # 常驻模式（Agent 用）：窗口关闭不退出进程，HTTP API 常驻，
         # 下次接口调用自动重开浏览器窗口。Ctrl+C 退出。
+        host.exit_on_close = False
         try:
             while True:
                 time.sleep(3600)
