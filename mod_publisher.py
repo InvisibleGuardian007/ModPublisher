@@ -63,32 +63,76 @@ def _daily_edge_running():
         return False
 
 
+def _cdp_ready(wait):
+    import urllib.request as _u
+    deadline = time.time() + wait
+    while time.time() < deadline:
+        try:
+            with _u.urlopen("http://127.0.0.1:9222/json/version", timeout=1) as r:
+                if r.status == 200:
+                    return True
+        except Exception:
+            time.sleep(0.5)
+    return False
+
+
+def _wait_edge_gone(timeout=12):
+    """等所有 Edge 主进程完全退出（端口/单例锁释放，否则新实例绑定 9222 会静默失败）。"""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            out = subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 "(Get-CimInstance Win32_Process -Filter \"name='msedge.exe'\" | "
+                 "Where-Object { $_.CommandLine -notlike '*--type=*' }).Count"],
+                capture_output=True, text=True, timeout=15)
+            if int((out.stdout or "0").strip() or 0) == 0:
+                return True
+        except Exception:
+            pass
+        time.sleep(0.5)
+    return False
+
+
+def _edge_port_needs_repair():
+    """Edge 命令行带着调试端口但实际不通（上次迁移时端口被残株抢占）→ 需重启修复。"""
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "Get-CimInstance Win32_Process -Filter \"name='msedge.exe'\" | "
+             "Where-Object { $_.CommandLine -notlike '*--type=*' -and "
+             "$_.CommandLine -like '*remote-debugging-port*' } | "
+             "Select-Object -First 1 -ExpandProperty ProcessId"],
+            capture_output=True, text=True, timeout=15)
+        if not (out.stdout or "").strip():
+            return False
+    except Exception:
+        return False
+    try:
+        import urllib.request as _u
+        with _u.urlopen("http://127.0.0.1:9222/json/version", timeout=1) as r:
+            return r.status != 200
+    except Exception:
+        return True
+
+
 def _restart_edge_with_port(exe):
-    """一次性迁移：温和关闭所有 Edge（保存会话）→ 清后台残株 →
-    带调试端口重启用户的默认 Edge。之后发布器永久作为标签页追加在其中。"""
+    """一次性迁移：关闭所有 Edge（先礼后兵）→ 等进程完全退出 →
+    带调试端口重启默认 Edge。返回端口是否就绪。"""
     try:
         subprocess.run(["taskkill", "/IM", "msedge.exe"],
                        capture_output=True, timeout=20)
-        time.sleep(2.5)
+        time.sleep(2)
         subprocess.run(["taskkill", "/F", "/IM", "msedge.exe"],
                        capture_output=True, timeout=20)
-        time.sleep(1)
+        if not _wait_edge_gone():
+            return False
         subprocess.Popen([exe, "--remote-debugging-port=9222",
                           "--hide-crash-restore-bubble", "--no-first-run",
                           "--no-default-browser-check", "about:blank"])
-        import urllib.request as _u
-        deadline = time.time() + 30
-        while time.time() < deadline:
-            try:
-                with _u.urlopen("http://127.0.0.1:9222/json/version",
-                                timeout=1) as r:
-                    if r.status == 200:
-                        return True
-            except Exception:
-                time.sleep(0.5)
+        return _cdp_ready(25)
     except Exception:
-        pass
-    return False
+        return False
 
 
 def focus_publisher_window():
@@ -286,7 +330,22 @@ class Host(object):
                 pg.close()
             except Exception:
                 pass
-        main = ui_pages[0] if ui_pages else ctx.new_page()
+        # about:blank 视为可丢弃（新拉起 Edge 的初始页/迁移残株）：优先复用，多余关闭
+        blanks = [pg for pg in ctx.pages
+                  if pg not in ui_pages and (pg.url or "") == "about:blank"
+                  and _alive(pg)]
+        if ui_pages:
+            main = ui_pages[0]
+        elif blanks:
+            main = blanks[0]
+        else:
+            main = ctx.new_page()
+        for pg in blanks:
+            if pg is not main:
+                try:
+                    pg.close()
+                except Exception:
+                    pass
         _home = ("https://mcdev.webapp.163.com/")
         dock = None
         for pg in ctx.pages:
@@ -1150,14 +1209,14 @@ def main():
     except Exception:
         pass
 
-    # 你的 Edge 在运行但没带调试端口 → 一次性迁移询问：
+    # 你的 Edge 在运行但没法附加（无端口 / 有端口标记但绑定失败）→ 迁移询问：
     # 同意后发布器永久作为标签页追加在你自己的 Edge 窗口里（标签页自动恢复）
-    if _daily_edge_running():
+    if _daily_edge_running() or _edge_port_needs_repair():
         exe = core.BrowserEngine._find_edge()
         if exe:
             try:
                 r = ctypes.windll.user32.MessageBoxW(
-                    0, "检测到你的 Edge 正在运行。\n\n"
+                    0, "检测到你的 Edge 需要修复/迁移自动化端口。\n\n"
                        "把发布器作为标签页追加进你当前的 Edge 窗口？\n"
                        "（需重启一次 Edge：所有标签页会自动恢复，"
                        "万一没恢复按 Ctrl+Shift+T）\n\n"
@@ -1166,9 +1225,10 @@ def main():
                     "网易模组发布器", 4)  # MB_YESNO
             except Exception:
                 r = 6
-            if r == 6:
-                _restart_edge_with_port(exe)
-                # 无论重启成功与否，继续正常启动（引擎会附加到带端口的 Edge）
+            if r == 6 and not _restart_edge_with_port(exe):
+                box("Edge 迁移未成功（端口未就绪），本次将使用独立发布器窗口。\n"
+                    "关闭所有 Edge 窗口后再启动一次即可重新迁移。")
+                # 迁移失败照常往下走：引擎检测到 Edge 在跑会退回专用 profile
 
     host = Host(core.load_config())
     try:

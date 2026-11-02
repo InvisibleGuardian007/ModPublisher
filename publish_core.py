@@ -253,7 +253,7 @@ class BrowserEngine(object):
         # 1) 附加优先：任何带调试端口的 Edge（用户的或发布器专用的）直接接管，
         #    发布器作为标签页追加在既有窗口里——绝不新开窗口
         try:
-            self._connect(timeout=3000)
+            self._connect(timeout=8000)
             self.log("已附加到你打开的 Edge（发布器作为标签页追加）")
             return
         except Exception:
