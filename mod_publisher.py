@@ -35,6 +35,7 @@ class Host(object):
         self.api = PA.Api(log=self.js_log)
         self.eng = None
         self.page = None
+        self.api_page = None    # 停靠页（ensure 时创建/复用）
         self.rows = []          # [(name, rid)]
         self.detail_cache = {}
         self._tid = None
@@ -127,16 +128,16 @@ class Host(object):
         ctx = self.eng._ctx
         # 绑定与注入都放到 context 级：随页面导航持续生效
         ctx.expose_binding("__pyRequest", self._on_request)
-        # 停靠页：常驻平台域，API 全部经它 fetch（浏览器原生管理轮换cookie）
-        self.api_page = ctx.new_page()
-        try:
-            self.api_page.goto("https://mcdev.webapp.163.com/",
-                               wait_until="domcontentloaded", timeout=30000)
-            self.api_page.wait_for_timeout(3500)
-        except Exception:
-            pass
+        # 会话恢复（崩溃/强杀后 Edge 会把上次标签原样带回）可能造成重复 UI 页，先归一
+        api_reused = self._dedupe_pages(ctx)
+        if not api_reused:
+            try:
+                self.api_page.goto("https://mcdev.webapp.163.com/",
+                                   wait_until="domcontentloaded", timeout=30000)
+                self.api_page.wait_for_timeout(3500)
+            except Exception:
+                pass
         # 主页面 = 自制复刻界面（结构同官方编辑页，体验优化+底部自动化）
-        self.page = ctx.pages[0] if ctx.pages else ctx.new_page()
         self.page.goto(UI_FILE.as_uri(), wait_until="domcontentloaded")
         self._ui_event = lambda kind, pj: self.page.evaluate(
             "([k,j])=>window.__mpEvent&&window.__mpEvent(k,j)", [kind, pj])
@@ -150,6 +151,29 @@ class Host(object):
         except Exception:
             pass
         return self.eng
+
+    def _dedupe_pages(self, ctx):
+        """崩溃/强杀后 Edge 会话恢复会把上次的 ui.html 标签带回（context 级绑定对恢复
+        标签同样生效，会重复引导 RPC），UI 页只保留一个；停靠页若仍活着则复用。
+        返回 api_page 是否复用（复用时不再重复 goto 平台域）。"""
+        ui_pages = [pg for pg in ctx.pages
+                    if (pg.url or "").startswith(UI_FILE.as_uri())]
+        for pg in ui_pages[1:]:
+            try:
+                pg.close()
+            except Exception:
+                pass
+        self.page = ui_pages[0] if ui_pages else (
+            ctx.pages[0] if ctx.pages else ctx.new_page())
+        ap = self.api_page
+        try:
+            if ap is not None and not ap.is_closed() \
+                    and "mcdev.webapp.163.com" in (ap.url or ""):
+                return True
+        except Exception:
+            pass
+        self.api_page = ctx.new_page()
+        return False
 
     def _on_ctx_closed(self):
         """普通模式：窗口关 = 进程退出（否则僵尸进程占 8765，下次启动弹『已在运行中』）；
