@@ -234,31 +234,45 @@ class BrowserEngine(object):
             pass
         self.emit("browser_up", None)
 
+    @staticmethod
+    def _any_edge_running():
+        try:
+            out = subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 "(Get-CimInstance Win32_Process -Filter \"name='msedge.exe'\" | "
+                 "Where-Object { $_.CommandLine -notlike '*--type=*' }).Count"],
+                capture_output=True, text=True, timeout=15)
+            return int((out.stdout or "0").strip() or 0) > 0
+        except Exception:
+            return False
+
     def _ensure_browser(self):
         if self._ctx:
             return
         self._pw = sync_playwright().start()
-        # 1) 附加优先：窗口还开着（哪怕上次脚本已退出）就原样接管，绝不新开窗口
+        # 1) 附加优先：任何带调试端口的 Edge（用户的或发布器专用的）直接接管，
+        #    发布器作为标签页追加在既有窗口里——绝不新开窗口
         try:
             self._connect(timeout=3000)
-            self.log("已附加到现有发布器窗口（窗口复用）")
+            self.log("已附加到你打开的 Edge（发布器作为标签页追加）")
             return
         except Exception:
             pass
-        # 2) 拉起独立 Edge 进程（不经 Playwright 托管：脚本退出窗口仍在，
-        #    下次启动附加复用——同一窗口反复使用，只有关窗后才会新开）
+        # 2) 拉起 Edge：无头 CLI 用专用 profile；有头界面默认用你的 Edge
+        #    （默认 profile = 标签追加在你自己的浏览器里），仅当已有 Edge
+        #    实例在跑（如用户拒绝迁移）才退回专用 profile，避免单例冲突
         self._kill_stale()
         exe = self._find_edge()
         if not exe:
             raise RuntimeError("未找到 msedge.exe，请安装 Microsoft Edge")
-        args = [exe,
-                "--remote-debugging-port=9222",
-                "--user-data-dir=%s" % PROFILE_DIR,
-                "--window-position=20,20", "--window-size=1360,1000",
+        headless = bool(self.cfg.get("headless_browser", False))
+        args = [exe, "--remote-debugging-port=9222",
                 "--hide-crash-restore-bubble", "--no-first-run",
                 "--no-default-browser-check"]
-        if bool(self.cfg.get("headless_browser", False)):
+        if headless:
             args.append("--headless=new")
+        if headless or self._any_edge_running():
+            args.append("--user-data-dir=%s" % PROFILE_DIR)
         args.append("about:blank")
         self._popped = True
         subprocess.Popen(args)

@@ -47,8 +47,71 @@ def _publisher_edge_pids():
         return []
 
 
+def _daily_edge_running():
+    """用户自己的 Edge 在运行（默认 profile、无调试端口、非发布器专用实例）。"""
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "Get-CimInstance Win32_Process -Filter \"name='msedge.exe'\" | "
+             "Where-Object { $_.CommandLine -notlike '*--type=*' -and "
+             "$_.CommandLine -notlike '*remote-debugging-port*' -and "
+             "$_.CommandLine -notlike '*ModPublisher*profile*' } | "
+             "Select-Object -First 1 -ExpandProperty ProcessId"],
+            capture_output=True, text=True, timeout=15)
+        return bool((out.stdout or "").strip())
+    except Exception:
+        return False
+
+
+def _restart_edge_with_port(exe):
+    """一次性迁移：温和关闭所有 Edge（保存会话）→ 清后台残株 →
+    带调试端口重启用户的默认 Edge。之后发布器永久作为标签页追加在其中。"""
+    try:
+        subprocess.run(["taskkill", "/IM", "msedge.exe"],
+                       capture_output=True, timeout=20)
+        time.sleep(2.5)
+        subprocess.run(["taskkill", "/F", "/IM", "msedge.exe"],
+                       capture_output=True, timeout=20)
+        time.sleep(1)
+        subprocess.Popen([exe, "--remote-debugging-port=9222",
+                          "--hide-crash-restore-bubble", "--no-first-run",
+                          "--no-default-browser-check", "about:blank"])
+        import urllib.request as _u
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            try:
+                with _u.urlopen("http://127.0.0.1:9222/json/version",
+                                timeout=1) as r:
+                    if r.status == 200:
+                        return True
+            except Exception:
+                time.sleep(0.5)
+    except Exception:
+        pass
+    return False
+
+
 def focus_publisher_window():
-    """把已运行实例的发布器 Edge 主窗口调到前台（重复启动时用）。"""
+    """把发布器界面调到前台：优先经 CDP 激活 ui.html 标签页（适用于追加在
+    用户自己 Edge 里的形态），失败再找发布器专用窗口。"""
+    try:
+        import urllib.request as _u
+        with _u.urlopen("http://127.0.0.1:9222/json/version", timeout=2):
+            pass
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            b = p.chromium.connect_over_cdp("http://127.0.0.1:9222", timeout=4000)
+            for c in b.contexts:
+                for pg in c.pages:
+                    if (pg.url or "").startswith(UI_FILE.as_uri()):
+                        try:
+                            pg.bring_to_front()
+                        except Exception:
+                            pass
+                        return True
+            return False
+    except Exception:
+        pass
     user32 = ctypes.windll.user32
     pids = set(_publisher_edge_pids())
     hit = []
@@ -1081,13 +1144,31 @@ def main():
         with _u.urlopen("http://127.0.0.1:8765/ping", timeout=2) as r:
             if r.status == 200:
                 focus_publisher_window()
-                box("发布器已在运行中，已为你调出窗口。\n\n"
+                box("发布器已在运行中，已为你调出发布器标签页。\n\n"
                     "Agent API: http://127.0.0.1:8765")
                 return
     except Exception:
         pass
 
-    # 残留 Edge 清理由引擎负责（附加优先，仅杀无法附加的端口残留）
+    # 你的 Edge 在运行但没带调试端口 → 一次性迁移询问：
+    # 同意后发布器永久作为标签页追加在你自己的 Edge 窗口里（标签页自动恢复）
+    if _daily_edge_running():
+        exe = core.BrowserEngine._find_edge()
+        if exe:
+            try:
+                r = ctypes.windll.user32.MessageBoxW(
+                    0, "检测到你的 Edge 正在运行。\n\n"
+                       "把发布器作为标签页追加进你当前的 Edge 窗口？\n"
+                       "（需重启一次 Edge：所有标签页会自动恢复，"
+                       "万一没恢复按 Ctrl+Shift+T）\n\n"
+                       "「是」= 追加进我的 Edge（推荐，以后都这样）\n"
+                       "「否」= 用独立发布器窗口",
+                    "网易模组发布器", 4)  # MB_YESNO
+            except Exception:
+                r = 6
+            if r == 6:
+                _restart_edge_with_port(exe)
+                # 无论重启成功与否，继续正常启动（引擎会附加到带端口的 Edge）
 
     host = Host(core.load_config())
     try:
