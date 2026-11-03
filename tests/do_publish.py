@@ -40,7 +40,7 @@ CDP = "http://127.0.0.1:9222"
 # —— 预算与配方（改版本时只需改 BANNER_DATE）——
 DETAIL_BUDGET = 404        # 实测可完整保存的字数上限（平台≈405）
 IMG_LIMIT = 10             # 平台详情图片上限
-BANNER_DATE = "26.10.26"   # 与 更新日志.md 顶部标题、模组版本号保持一致
+BANNER_DATE = "26.11.3"    # 与 更新日志.md 顶部标题、模组版本号保持一致
 BANNER = "<p><strong>📢%s更新</strong></p>" % BANNER_DATE  # 12 字，别加长
 DRY_URL = "https://x19.fp.ps.netease.com/file/dryrun-placeholder"
 
@@ -48,7 +48,7 @@ DRY_URL = "https://x19.fp.ps.netease.com/file/dryrun-placeholder"
 # 编辑器上限 1000 字（页面上标 x/1000），预算宽裕，用得下完整长标题
 PC_BUDGET = 1000
 PC_BANNER = ("<p><strong style=\"font-size:18px;\">📢 %s 更新日志"
-             "（新增80个附魔，共242个）</strong></p>" % BANNER_DATE)  # 改版本时连同数字一起改
+             "（百科大升级，共242个）</strong></p>" % BANNER_DATE)  # 改版本时连同数字一起改
 
 # 历史更新标题：老形态「📢 26.10.26 更新日志（新增80个附魔，共242个）」/ 新形态「📢26.10.26更新」
 _UPDATE_TITLE = re.compile(r"^📢?\s*[0-9.]*\s*更新(日志)?.*$")

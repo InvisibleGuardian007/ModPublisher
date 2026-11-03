@@ -67,7 +67,12 @@ if dump.exists():
     ok &= check("publish_api 同口径", PA.editor_len(live) == live_len,
                 str(PA.editor_len(live)))
     ok &= check("前缀 372 字", DP.editor_len(prefix) == 372, str(DP.editor_len(prefix)))
-    ok &= check("重组后仍 404", DP.editor_len(built) == 404, str(DP.editor_len(built)))
+    # 重组字数 = 线上字数 - 新旧横幅日期字符差（26.10.26→26.11.3 少 1 字）
+    delta = len("26.10.26") - len(DP.BANNER_DATE)
+    ok &= check("重组后仍 404", DP.editor_len(built) == live_len - delta,
+                str(DP.editor_len(built)))
+    ok &= check("重组后不超预算", DP.editor_len(built) <= DP.DETAIL_BUDGET,
+                "%d/%d" % (DP.editor_len(built), DP.DETAIL_BUDGET))
     ok &= check("重组后仍 10 图", built.count("<img") == 10)
 
 print("[publish_api 护栏]")
