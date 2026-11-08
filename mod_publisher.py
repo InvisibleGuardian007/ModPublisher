@@ -409,6 +409,17 @@ class Host(object):
         if rid:
             try:
                 d = self.api.detail(rid)
+            except Exception as e:
+                # 停靠页偶发未就绪：重载后再试一次，仍失败才走浏览器兜底
+                try:
+                    self.api_page.reload(wait_until="domcontentloaded")
+                    self.api_page.wait_for_timeout(2500)
+                    d = self.api.detail(rid)
+                except Exception as e2:
+                    self.js_log("[API] 详情读取失败转浏览器: %s / 重试: %s"
+                                % (e, e2))
+                    d = None
+            if d is not None:
                 self.detail_cache[name] = d
                 res_list = d.get("res") if isinstance(d.get("res"), list) else []
                 res0 = res_list[0] if res_list else {}
@@ -480,9 +491,7 @@ class Host(object):
                     "detail_html": det_html,
                     "detail_key": det_key,
                 }
-            except Exception as e:
-                self.js_log("[API] 详情失败转浏览器: %s" % e)
-        # 浏览器兜底
+        # 浏览器兜底（在专用副页进行，绝不占用主应用窗口）
         cur = self.eng.read_current(name)
         cur.pop("detail_plain", None)
         return cur

@@ -174,11 +174,35 @@ class BrowserEngine(object):
         self._browser = None
         self._attached = False    # True=CDP 附加（窗口复用，非 Playwright 托管）
         self._popped = False      # True=本脚本拉起的 Edge 进程
-        self.page = None
+        self.page = None          # 主应用窗口页（--app UI），自动化绝不占用
+        self._work = None         # 平台自动化专用副页
         self._editor_mod = None   # 当前停在编辑页的模组id
 
     def log(self, msg):
         self.emit("log", msg)
+
+    @property
+    def wp(self):
+        """平台自动化专用页面：新建/复用隐藏副页，主应用窗口永不被导航。"""
+        if self._work is None or self._work.is_closed():
+            self._work = self._ctx.new_page()
+            try:   # 副页会抢焦点：把主应用窗口带回前台
+                self.page.bring_to_front()
+            except Exception:
+                pass
+        return self._work
+
+
+    @property
+    def wp(self):
+        """平台自动化专用页面：新建/复用隐藏副页，主应用窗口永不被导航。"""
+        if self._work is None or self._work.is_closed():
+            self._work = self._ctx.new_page()
+            try:   # 副页会抢焦点：把主应用窗口带回前台
+                self.page.bring_to_front()
+            except Exception:
+                pass
+        return self._work
 
     # ---- 生命周期 ----
     CDP = "http://127.0.0.1:9222"
@@ -315,18 +339,19 @@ class BrowserEngine(object):
         self._browser = None
         self._pw = None
         self.page = None
+        self._work = None
         self._editor_mod = None
 
     # ---- 登录 ----
     def logged_in(self):
-        return "login" not in (self.page.url or "")
+        return "login" not in (self.wp.url or "")
 
     def read_profile(self):
         """抓登录者昵称和头像（已对真实页面验证：'注销'可能非叶子节点，
         用"含注销文本的最小元素"做锚，向上找容器取其前最近短文本叶子+img）。"""
         try:
             self._ensure_browser()
-            return self.page.evaluate(
+            return self.wp.evaluate(
                 """() => {
                 let name = null, avatar = null;
                 const cand = [...document.querySelectorAll('body *')]
@@ -362,45 +387,26 @@ class BrowserEngine(object):
         except Exception:
             return {"name": None, "avatar": None}
 
-    def open_login(self, timeout_s=180):
-        """打开登录页等待用户人工登录，轮询直到登录成功或超时。"""
-        self._ensure_browser()
-        self.page.goto(self.cfg["list_url"], wait_until="domcontentloaded")
-        self.page.wait_for_timeout(2000)
-        if self.logged_in():
-            return True
-        self.emit("status", "等待登录（请在弹出的浏览器里登录，建议勾选十天免登录）")
-        deadline = time.time() + timeout_s
-        while time.time() < deadline:
-            self.page.wait_for_timeout(2000)
-            try:
-                if self.logged_in():
-                    self.emit("status", "已登录")
-                    return True
-            except Exception:
-                pass
-        return False
-
     # ---- 导航 ----
     def _goto_list(self):
         self._ensure_browser()
-        cur = self.page.url or ""
+        cur = self.wp.url or ""
         if "#/work/list" not in cur:  # 已在列表页就不重载（重载会引发登录态暂态）
-            self.page.goto(self.cfg["list_url"], wait_until="domcontentloaded")
-            self.page.wait_for_timeout(1200)
+            self.wp.goto(self.cfg["list_url"], wait_until="domcontentloaded")
+            self.wp.wait_for_timeout(1200)
         # SPA 重载后可能短暂路过登录路由：等几秒，持续在登录页才算真的未登录
         for _ in range(4):
             if self.logged_in():
                 break
-            self.page.wait_for_timeout(1200)
+            self.wp.wait_for_timeout(1200)
         if not self.logged_in():
             raise RuntimeError("未登录：请先点「登录」")
         # 等数据表真正渲染出来（SPA 异步加载，慢网络下固定 sleep 不够）
         try:
-            self.page.wait_for_selector("table tr td", timeout=15000)
+            self.wp.wait_for_selector("table tr td", timeout=15000)
         except Exception:
             pass
-        self.page.wait_for_timeout(800)
+        self.wp.wait_for_timeout(800)
 
     def read_list(self):
         """读取平台作品列表全部行：名称/资源ID/类别/发布时间/提审时间/状态。"""
@@ -425,20 +431,20 @@ class BrowserEngine(object):
         }"""
         rows = []
         for _ in range(3):  # 表格慢加载时重试
-            rows = self.page.evaluate(js)
+            rows = self.wp.evaluate(js)
             if rows:
                 break
-            self.page.wait_for_timeout(2500)
+            self.wp.wait_for_timeout(2500)
         self.log("平台列表已刷新：%d 个作品" % len(rows))
         return rows
 
     def open_editor(self, pattern, key=None):
         """进入某个作品的编辑页（已在则复用）。pattern=正则源文本（调用方负责转义）。"""
         key = key or pattern
-        if self._editor_mod == key and EDITOR_URL_RE.search(self.page.url or ""):
+        if self._editor_mod == key and EDITOR_URL_RE.search(self.wp.url or ""):
             return
         self._goto_list()
-        row = self.page.get_by_role("row", name=re.compile(pattern))
+        row = self.wp.get_by_role("row", name=re.compile(pattern))
         row.wait_for(state="visible", timeout=15000)
         btn = row.get_by_role("button", name="更新")
         if btn.count() != 1:
@@ -446,15 +452,15 @@ class BrowserEngine(object):
         if btn.count() != 1:
             raise RuntimeError("「%s」行里找不到 更新/编辑 按钮，请到平台人工检查状态" % key)
         btn.first.click()
-        self.page.wait_for_url(EDITOR_URL_RE, timeout=20000)
-        self.page.wait_for_timeout(2500)
+        self.wp.wait_for_url(EDITOR_URL_RE, timeout=20000)
+        self.wp.wait_for_timeout(2500)
         self._editor_mod = key
-        self.log("已进入编辑页: %s" % self.page.url.split("#")[-1])
+        self.log("已进入编辑页: %s" % self.wp.url.split("#")[-1])
 
     # ---- 读当前值（优先加载，不覆盖） ----
     def read_current(self, row_name):
         self.open_editor(re.escape(row_name), key=row_name)
-        data = self.page.evaluate(
+        data = self.wp.evaluate(
             """() => {
             const out = {};
             const nameInp = document.querySelector('input[placeholder="请输入资源名称"]');
@@ -508,7 +514,7 @@ class BrowserEngine(object):
 
     # ---- 写入（只写勾选的项） ----
     def _mark_zip_input(self):
-        return self.page.evaluate(
+        return self.wp.evaluate(
             """() => {
             const inputs = [...document.querySelectorAll('input[type=file][name=fpfile]')];
             const zipHits = [];
@@ -546,37 +552,37 @@ class BrowserEngine(object):
                 raise RuntimeError("未定位到 zip 上传控件（平台改版？），已停止且未保存")
             zp = actions["zip_path"]
             self.log("上传: %s" % os.path.basename(zp))
-            self.page.locator("input[data-publish-zip='1']").set_input_files(str(zp))
-            self.page.get_by_text(os.path.basename(zp)).first.wait_for(
+            self.wp.locator("input[data-publish-zip='1']").set_input_files(str(zp))
+            self.wp.get_by_text(os.path.basename(zp)).first.wait_for(
                 state="visible", timeout=180000)
-            self.page.wait_for_timeout(1500)
+            self.wp.wait_for_timeout(1500)
             done.append("上传新包")
         if actions.get("boost"):
-            boost = self.page.locator("div.el-form-item", has=self.page.get_by_text("提升版本", exact=True))
+            boost = self.wp.locator("div.el-form-item", has=self.wp.get_by_text("提升版本", exact=True))
             if boost.count() != 1:
                 raise RuntimeError("「提升版本」定位异常，已停止且未保存")
             boost.get_by_role("radio", name="是").check()
-            self.page.wait_for_timeout(500)
+            self.wp.wait_for_timeout(500)
             done.append("提升版本")
         if actions.get("name"):
-            inp = self.page.get_by_role("textbox", name="请输入资源名称")
+            inp = self.wp.get_by_role("textbox", name="请输入资源名称")
             old = inp.input_value()
             inp.fill(actions["name"])
-            self.page.wait_for_timeout(300)
+            self.wp.wait_for_timeout(300)
             done.append("名称 %r→%r" % (old, actions["name"]))
         if actions.get("activity"):
-            box = self.page.get_by_placeholder(re.compile("用于填写参与官方活动"))
+            box = self.wp.get_by_placeholder(re.compile("用于填写参与官方活动"))
             box.fill(actions["activity"])
-            self.page.wait_for_timeout(200)
+            self.wp.wait_for_timeout(200)
             done.append("活动参与说明")
         if actions.get("pc_intro"):
-            box = self.page.get_by_placeholder(re.compile("^请输入简介$"))
+            box = self.wp.get_by_placeholder(re.compile("^请输入简介$"))
             box.fill(actions["pc_intro"])
-            self.page.wait_for_timeout(200)
+            self.wp.wait_for_timeout(200)
             done.append("PC模组简介")
         if actions.get("note"):
             note = actions["note"][: self.cfg.get("max_note_len", 200)]
-            idx_marked = self.page.evaluate(
+            idx_marked = self.wp.evaluate(
                 """() => {
                 const t = [...document.querySelectorAll('textarea.el-textarea__inner')]
                     .find(x => x.value.includes('请到详细界面查看'));
@@ -586,11 +592,11 @@ class BrowserEngine(object):
             )
             if not idx_marked:
                 raise RuntimeError("未定位到「PE更新纪要」输入框，已停止且未保存")
-            self.page.locator("textarea[data-publish-note='1']").fill(note)
-            self.page.wait_for_timeout(300)
+            self.wp.locator("textarea[data-publish-note='1']").fill(note)
+            self.wp.wait_for_timeout(300)
             done.append("更新纪要(%d字)" % len(note))
         if actions.get("detail_html"):
-            ok = self.page.evaluate(
+            ok = self.wp.evaluate(
                 """(html) => {
                 const ed = document.querySelector('.ql-editor');
                 if (!ed) return false;
@@ -600,11 +606,11 @@ class BrowserEngine(object):
             }""", actions["detail_html"])
             if not ok:
                 raise RuntimeError("未找到详情编辑器，已停止且未保存")
-            self.page.wait_for_timeout(500)
+            self.wp.wait_for_timeout(500)
             done.append("详情图文(%d块HTML)" % len(actions["detail_html"]))
         self.log("本次写入: %s" % ("；".join(done) if done else "（无改动项）"))
 
-        scan = self.page.evaluate(
+        scan = self.wp.evaluate(
             """() => {
             const items = [...document.querySelectorAll('.el-form-item.is-required')];
             return items.map(it => {
@@ -622,20 +628,20 @@ class BrowserEngine(object):
             else "未填→ " + "、".join(s["label"] for s in scan if s["state"] == "未填")))
 
         self.log("点击「保存」...")
-        self.page.get_by_role("button", name="保存", exact=True).click()
-        self.page.wait_for_timeout(3000)
+        self.wp.get_by_role("button", name="保存", exact=True).click()
+        self.wp.wait_for_timeout(3000)
         self.log("保存完成")
         return scan
 
     def submit(self):
         self.log("点击「提交审核」...")
-        self.page.get_by_role("button", name="提交审核", exact=True).click()
-        self.page.wait_for_timeout(2000)
-        confirm = self.page.get_by_role("button", name=re.compile(r"^\s*确\s*定\s*$"))
+        self.wp.get_by_role("button", name="提交审核", exact=True).click()
+        self.wp.wait_for_timeout(2000)
+        confirm = self.wp.get_by_role("button", name=re.compile(r"^\s*确\s*定\s*$"))
         if confirm.count() > 0:
             confirm.first.click()
             self.log("已确认平台弹窗")
-        self.page.wait_for_timeout(4000)
+        self.wp.wait_for_timeout(4000)
         self._editor_mod = None
         self.log("已提交审核，结果请到平台「上架与资源管理」查看")
 
@@ -643,7 +649,7 @@ class BrowserEngine(object):
     def set_detail_html(self, row_name, html):
         """把详情编辑器内容整体替换为给定 HTML（Quill root + input 事件同步 v-model）。"""
         self.open_editor(re.escape(row_name), key=row_name)
-        ok = self.page.evaluate(
+        ok = self.wp.evaluate(
             """(html) => {
             const ed = document.querySelector('.ql-editor');
             if (!ed) return false;
@@ -658,7 +664,7 @@ class BrowserEngine(object):
     def upload_detail_image(self, row_name, file_path):
         """通过平台详情编辑器自带的文件控件上传图片，返回上传后的详情HTML。"""
         self.open_editor(re.escape(row_name), key=row_name)
-        marked = self.page.evaluate(
+        marked = self.wp.evaluate(
             """() => {
             // 优先 PE详情信息 区块里的 .edit-quill 文件input
             const quills = [...document.querySelectorAll('.edit-quill')];
@@ -680,16 +686,16 @@ class BrowserEngine(object):
         if not marked:
             raise RuntimeError("未找到详情图片上传控件（平台改版？）")
         self.log("上传详情图片: %s" % os.path.basename(file_path))
-        before = self.page.evaluate(
+        before = self.wp.evaluate(
             "() => { const e = document.querySelector('.ql-editor'); return e ? e.innerHTML : ''; }")
-        self.page.locator("input[data-detail-img='1']").set_input_files(str(file_path))
+        self.wp.locator("input[data-detail-img='1']").set_input_files(str(file_path))
         for _ in range(20):
-            self.page.wait_for_timeout(1000)
-            html = self.page.evaluate(
+            self.wp.wait_for_timeout(1000)
+            html = self.wp.evaluate(
                 "() => { const e = document.querySelector('.ql-editor'); return e ? e.innerHTML : ''; }")
             if html and html != before and "loading" not in html.lower():
-                self.page.wait_for_timeout(1500)  # 等URL替换完成
-                html = self.page.evaluate(
+                self.wp.wait_for_timeout(1500)  # 等URL替换完成
+                html = self.wp.evaluate(
                     "() => { const e = document.querySelector('.ql-editor'); return e ? e.innerHTML : ''; }")
                 return html
         raise RuntimeError("详情图片上传超时（20秒未见变化）")
