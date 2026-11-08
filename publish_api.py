@@ -194,50 +194,64 @@ class Api(object):
         return self.get("items/categories/pe/%s" % item_id)
 
     # ---- 上传 ----
+    _PAGE_UPLOAD_MAX = 32 * 1024 * 1024   # 超过后 base64 整包过 CDP 不可靠
+
     def file_token(self, file_type):
         d = self.get("filepicker/file_token", file_type=file_type, secure="false")
         return d.get("token")
 
+    def _ctx_upload(self, upload_url, token, name, mime, data):
+        rr = self._ctx.request.post(
+            upload_url,
+            multipart={
+                "Authorization": token,
+                "fpfile": {"name": name, "mimeType": mime, "buffer": data}},
+            fail_on_status_code=False, timeout=600000)
+        return rr.status, rr.text(), (rr.headers or {}).get("x-ntes-signature")
+
+    def _page_upload(self, upload_url, token, name, mime, data):
+        import base64 as _b64
+        js = """async ([url, token, name, mime, b64]) => {
+            const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+            const fd = new FormData();
+            fd.append('Authorization', token);
+            fd.append('fpfile', new Blob([bytes], {type: mime}), name);
+            const r = await fetch(url, {method: 'POST', body: fd});
+            return {status: r.status, text: await r.text(),
+                    sign: r.headers.get('x-ntes-signature')};
+        }"""
+        r = self._page.evaluate(js, [upload_url, token, name, mime,
+                                     _b64.b64encode(data).decode()])
+        return r["status"], r["text"], r.get("sign")
+
     def upload(self, file_type, file_path, mime="application/octet-stream"):
-        """ctx.request 直传（共享浏览器cookie），返回 FileInfoDTO {body,file_type,sign}。"""
+        """直传（共享浏览器 cookie），返回 FileInfoDTO {body,file_type,sign}。
+        小文件走停靠页 fetch（签名头可读）；大文件（视频等）base64 过 CDP
+        慢且易超载荷上限，ctx.request 优先，签名不可读时再回页面通道。"""
         token = self.file_token(file_type)
         if not token:
             raise ApiError("获取上传token失败")
         upload_url = self._upload_url_from_token(token)
         data = Path(file_path).read_bytes()
-        import base64 as _b64
-        sign = None
-        body = ""
-        status = 0
-        if self._page is not None:
+        name = Path(file_path).name
+        status, body, sign = 0, "", None
+        if len(data) > self._PAGE_UPLOAD_MAX:
             try:
-                js = """async ([url, token, name, mime, b64]) => {
-                    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-                    const fd = new FormData();
-                    fd.append('Authorization', token);
-                    fd.append('fpfile', new Blob([bytes], {type: mime}), name);
-                    const r = await fetch(url, {method: 'POST', body: fd});
-                    return {status: r.status, text: await r.text(),
-                            sign: r.headers.get('x-ntes-signature')};
-                }"""
-                r = self._page.evaluate(js, [upload_url, token, Path(file_path).name,
-                                             mime, _b64.b64encode(data).decode()])
-                status, body, sign = r["status"], r["text"], r.get("sign")
+                status, body, sign = self._ctx_upload(upload_url, token, name,
+                                                      mime, data)
+            except Exception as e:
+                self.log("大文件 ctx.request 直传异常(%s)，转页面通道" % str(e)[:80])
+        if (status != 200 or not sign) and self._page is not None:
+            try:
+                status, body, sign = self._page_upload(upload_url, token, name,
+                                                       mime, data)
             except Exception as e:
                 # 大文件 base64 可能超 CDP 载荷上限/页面超时：直接落回退通道
                 self.log("页面直传异常(%s)，转 ctx.request 回退" % str(e)[:80])
         if status != 200 or not sign:
             # 回退：ctx.request 直传（部分响应头跨域不可读时）
-            rr = self._ctx.request.post(
-                upload_url,
-                multipart={
-                    "Authorization": token,
-                    "fpfile": {"name": Path(file_path).name,
-                               "mimeType": mime, "buffer": data}},
-                fail_on_status_code=False, timeout=600000)
-            body = rr.text()
-            status = rr.status
-            sign = (rr.headers or {}).get("x-ntes-signature")
+            status, body, sign = self._ctx_upload(upload_url, token, name,
+                                                  mime, data)
         if status != 200:
             raise ApiError("上传HTTP %s: %s" % (status, body[:200]))
         if not sign:
@@ -278,6 +292,37 @@ class Api(object):
 
 
 # ============ detail → update body（对齐 McDevManager toWorkUpdateDTO 矫正） ============
+# changes 里这些键有专门的处理通道，不能进通用覆盖（new_res* 会破坏 res 组装）
+_CHANGE_SKIP = ("new_res", "new_res_name", "add_version", "detail_key")
+
+
+def _coerce_change(v, cur):
+    """界面/CLI 送来的脏值统一是字符串；按原字段类型适配回去：
+    list/dict → JSON 解析、bool/int/float → 按原样转，其余原样透传。
+    保证「全字段编辑」「ICON 槽位」等非白名单键的改动真正落库，
+    而不是被静默丢弃。"""
+    if not isinstance(v, str):
+        return v
+    if isinstance(cur, bool):
+        if v.strip().lower() in ("true", "1", "是"):
+            return True
+        if v.strip().lower() in ("false", "0", "否"):
+            return False
+        return v
+    if isinstance(cur, int) and re.fullmatch(r"-?\d+", v.strip()):
+        return int(v.strip())
+    if isinstance(cur, float) and re.fullmatch(r"-?\d+(\.\d+)?", v.strip()):
+        return float(v.strip())
+    if isinstance(cur, (list, dict)) or (cur is None and v[:1] in "[{"):
+        try:
+            j = json.loads(v)
+            if isinstance(j, (list, dict)):
+                return j
+        except Exception:
+            pass
+    return v
+
+
 def _to_list(v):
     if v is None or v == "":
         return []
@@ -372,12 +417,14 @@ def build_update_body(detail, changes=None):
         if b.get(tk) == "":
             b[tk] = None
 
-    for k in ("item_name", "update_summary", "current_change_log",
-              "activity_desc", "pe_game_introduction", "info"):
-        if changes.get(k) is not None:
-            b[k] = changes[k]
+    # —— changes 通用应用（界面全字段编辑、ICON 槽位等任意键的改动都要生效；
+    #     早前只透传 6 个白名单键，其余改动一律被静默丢弃）——
+    for k, v in changes.items():
+        if v is None or k in _CHANGE_SKIP:
+            continue
+        b[k] = _coerce_change(v, b.get(k, detail.get(k)))
 
-    res = detail.get("res")
+    res = b.get("res") if isinstance(b.get("res"), list) else detail.get("res")
     res = res if isinstance(res, list) else _to_list(res)
     new_res = changes.get("new_res")
     if new_res:
@@ -402,7 +449,7 @@ def build_update_body(detail, changes=None):
         b["res"] = res
     else:
         b["res"] = res
-    chan = detail.get("channel")
+    chan = b.get("channel")   # changes 里改过 channel（JSON 串→list）则以其为准
     b["channel"] = chan if isinstance(chan, list) else _to_list(chan)
     return b
 
