@@ -1444,7 +1444,8 @@ async function refreshAll(){
           $("updTip").textContent="发现新版本 "+r.latest;
           $("btnDoUpdate").style.display="";
           $("btnDoUpdate").textContent="立即更新到 "+r.latest;
-          log("发现新版本 "+r.latest+"：⚙ 设置里可一键热更新",1)}}).catch(()=>{})}
+          log("发现新版本 "+r.latest+"：⚙ 设置里可一键热更新",1)}})
+      .catch(e=>log("检查更新失败（不影响使用）："+e.message))}
   }catch(e){
     // 启动失败（含手机端 token 失效/网络问题）：登录门显示原因
     const gate=$("loginGate");
