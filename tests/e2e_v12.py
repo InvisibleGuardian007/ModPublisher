@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """v13 复刻界面端到端：自制页面（官方结构复刻）+ 底部自动化条，真会话。"""
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -61,7 +62,8 @@ print("2 表单: 名称/资源版本/已传包 ✓")
 wait("document.querySelectorAll('#doc img').length>=9", "详情图")
 imgs = EV("document.querySelectorAll('#doc img').length")
 cnt = EV("document.getElementById('docCnt').textContent")
-assert imgs == 10 and "434" in cnt, (imgs, cnt)
+# 新口径：Quill 字数/上限（404）+ 图数/上限（10），如「 404/404 · 图 10/10」
+assert imgs == 10 and re.search(r"\d+/404", cnt) and "10/10" in cnt, (imgs, cnt)
 print("3 详情文档: 10图内联 %s ✓" % cnt.strip())
 
 # 3.5 图片槽位 / 视频 / 攻略（官方布局复刻）
