@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 """网易模组发布器 v11 —— 单窗口：窗口即 Edge 本体，界面 ui.html，Python 引擎
 经 Playwright 绑定提供 RPC；引擎线程空闲时泵消息保证绑定实时可达。"""
+import base64
 import ctypes
 import json
 import os
 import re
 import sys
 import subprocess
+import tempfile
 import threading
 import time
 from ctypes import wintypes
@@ -41,7 +43,8 @@ def _publisher_edge_pids():
              "Get-CimInstance Win32_Process -Filter \"name='msedge.exe'\" | Where-Object "
              "{ $_.CommandLine -like '*%s*' -and $_.CommandLine -notlike '*--type=*' } "
              "| Select-Object -ExpandProperty ProcessId" % marker],
-            capture_output=True, text=True, timeout=15)
+            capture_output=True, text=True, timeout=15,
+            creationflags=core.CREATE_NO_WINDOW)
         return [int(x) for x in (out.stdout or "").split()]
     except Exception:
         return []
@@ -289,9 +292,11 @@ class Host(object):
     def js_log(self, msg):
         def push():
             try:
+                # 界面日志抽屉（__mpLog）；无抽屉的旧页面回退 #log 节点
                 self.page.evaluate(
-                    "s=>{const l=document.getElementById('log');"
-                    "if(l){l.textContent+=s+'\n';l.scrollTop=1e9}}", msg)
+                    "m=>{if(window.__mpLog)window.__mpLog(m);"
+                    "else{const l=document.getElementById('log');"
+                    "if(l)l.textContent+=m+'\\n'}}", msg)
             except Exception:
                 pass
         try:
@@ -457,23 +462,22 @@ class Host(object):
         self._back_to_ui()
         return {"ok": bool(ok)}
 
-    def rpc_upload_image(self, p):
-        import base64
-        import tempfile
-        raw = base64.b64decode(p["b64"])
-        suffix = ".png"
-        if "jpeg" in (p.get("mime") or "") or "jpg" in (p.get("mime") or ""):
-            suffix = ".jpg"
-        f = Path(tempfile.gettempdir()) / ("mp_img_%d%s" % (time.time(), suffix))
-        f.write_bytes(raw)
+    def _upload_b64(self, b64, mime, prefix="mp_img"):
+        """base64 → 临时文件 → 平台直传，返回 FileInfoDTO；临时文件必清理。"""
+        suffix = ".jpg" if ("jpeg" in (mime or "") or "jpg" in (mime or "")) else ".png"
+        f = Path(tempfile.gettempdir()) / ("%s_%d%s" % (prefix, time.time_ns(), suffix))
+        f.write_bytes(base64.b64decode(b64))
         try:
-            info = self.api.upload("image", f, p.get("mime") or "image/png")
-            return json.loads(info["body"]).get("url")
+            return self.api.upload("image", f, mime or "image/png")
         finally:
             try:
                 f.unlink()
             except Exception:
                 pass
+
+    def rpc_upload_image(self, p):
+        info = self._upload_b64(p["b64"], p.get("mime"))
+        return json.loads(info["body"]).get("url")
 
     def rpc_publish(self, p):
         name = p.get("name")
@@ -489,7 +493,7 @@ class Host(object):
                 self.js_log("[API] 详情拉取失败: %s" % e)
         if rid and detail is not None:
             try:
-                return self._api_publish(rid, mod, detail, p)
+                return self._api_publish(rid, mod, detail, p, name=name)
             except PA.DetailValidationError as e:
                 # 校验/回读失败转浏览器也一样被拒或截断，直接抛给调用方
                 self.js_log("[API] %s" % e)
@@ -508,19 +512,23 @@ class Host(object):
             "detail_html": p.get("detail_html")})
         return {"fallback": True}
 
-    def _api_publish(self, rid, mod, detail, p):
+    def _api_publish(self, rid, mod, detail, p, name=None):
         changes = dict(p.get("changes") or {})  # 全字段：界面脏值直接生效
         if p.get("item_name"):
             changes["item_name"] = p["item_name"]
-        if p.get("update_summary"):
-            changes["update_summary"] = p["update_summary"][:200]
-            changes["current_change_log"] = changes["update_summary"]
+        note = p.get("update_summary") or changes.get("update_summary")
+        if note:
+            note = str(note)[:200]
+            changes["update_summary"] = note
+            # 平台展示用的 current_change_log 跟随纪要（显式改过则尊重显式值）
+            changes.setdefault("current_change_log", note)
         if p.get("activity_desc"):
             changes["activity_desc"] = p["activity_desc"]
-        if p.get("pc_intro"):
+        pc_intro = p.get("pc_intro") or changes.pop("pc_intro", None)
+        if pc_intro:
             si = detail.get("sync_item_info")
             si = si if isinstance(si, dict) else {}
-            si["brief"] = p["pc_intro"]
+            si["brief"] = pc_intro
             detail["sync_item_info"] = si
         if p.get("detail_html"):
             key = p.get("detail_key") or (
@@ -556,15 +564,17 @@ class Host(object):
         body = PA.build_update_body(detail, changes)
         self.api.update_item(rid, body)
         self.js_log("[API] 保存成功（update）")
-        r = self._verify_publish(rid, detail, changes, det_key, zip_name)
-        r.setdefault("zip", zip_name or ((detail.get("res") or [{}])[0]
-                                         .get("res_name") if detail.get("res") else None))
+        r, fresh = self._verify_publish(rid, detail, changes, det_key, zip_name)
+        if name:
+            self.detail_cache[name] = fresh  # 回读的新详情作为缓存基线
+        r.setdefault("zip", zip_name or ((fresh.get("res") or [{}])[0]
+                                         .get("res_name") if fresh.get("res") else None))
         return r
 
     def _verify_publish(self, rid, old_detail, changes, key, zip_name):
         """update 后立即回读验证：平台对超预算详情**静默截断吞图**、包替换失败均无报错，
         只有回读能发现。异常等 2 秒复查一次（排除读延迟）再判死。
-        返回回执（新旧版本号、详情字数/图数、落库包名）。"""
+        返回 (回执, 回读到的最新详情)——回执含新旧版本号、详情字数/图数、落库包名。"""
         sent_html = (changes.get(key) or "") if key else ""
         sent_imgs = sent_html.count("<img")
         sent_len = PA.editor_len(sent_html) if sent_html else 0
@@ -588,7 +598,7 @@ class Host(object):
                         "old_version": old_ver,
                         "detail_len": PA.editor_len(html2) if sent_html else None,
                         "detail_imgs": html2.count("<img") if sent_html else None,
-                        "zip": got_zip or None}
+                        "zip": got_zip or None}, d
             if attempt == 1:
                 self.js_log("[API] 回读异常（截断=%s 包=%s），2 秒后复查…"
                             % (truncated, got_zip or "无"))
@@ -618,29 +628,11 @@ class Host(object):
         return {"ok": True, "fallback": True}
 
 
-    # ---------- 工具栏 RPC（真平台编辑页上的自动化） ----------
-    def _name_of_rid(self, rid):
-        if not self.rows:
-            self.rpc_boot({})
-        for n, r in self.rows:
-            if str(r) == str(rid):
-                return n
-        return None
-
+    # ---------- 图片/视频槽位 RPC ----------
     def rpc_slot_save(self, p):
         """图片槽位：key=banner(组件ICON) 或 channel:<id>。上传并保存。"""
-        import base64
-        import tempfile
         rid = self._rid(p["name"])
-        tmp = Path(tempfile.gettempdir()) / ("mp_slot_%d.png" % time.time())
-        tmp.write_bytes(base64.b64decode(p["b64"]))
-        try:
-            info = self.api.upload("image", tmp, p.get("mime") or "image/png")
-        finally:
-            try:
-                tmp.unlink()
-            except Exception:
-                pass
+        info = self._upload_b64(p["b64"], p.get("mime"), "mp_slot")
         url = json.loads(info["body"]).get("url")
         detail = self.api.detail(rid)
         key = p["key"]
@@ -667,18 +659,8 @@ class Host(object):
 
     def rpc_pc_slot_save(self, p):
         """PC图片槽位：sync_item_info.channel（channel_id 1001/1002/…）"""
-        import base64
-        import tempfile
         rid = self._rid(p["name"])
-        tmp = Path(tempfile.gettempdir()) / ("mp_pcs_%d.png" % time.time())
-        tmp.write_bytes(base64.b64decode(p["b64"]))
-        try:
-            info = self.api.upload("image", tmp, p.get("mime") or "image/png")
-        finally:
-            try:
-                tmp.unlink()
-            except Exception:
-                pass
+        info = self._upload_b64(p["b64"], p.get("mime"), "mp_pcs")
         url = json.loads(info["body"]).get("url")
 
         def job():
@@ -706,20 +688,13 @@ class Host(object):
 
     def rpc_video_save(self, p):
         """视频+封面：上传并保存 video_info_list=[{cover,url,size}]"""
-        import base64
-        import tempfile
         rid = self._rid(p["name"])
         up = p.get("video") or {}
         cv = p.get("cover") or {}
         if not up.get("b64"):
             raise RuntimeError("缺少视频文件")
-
-        def tmp_write(b64, suffix):
-            f = Path(tempfile.gettempdir()) / ("mp_v%d%s" % (time.time(), suffix))
-            f.write_bytes(base64.b64decode(b64))
-            return f
-
-        vf = tmp_write(up["b64"], ".mp4")
+        vf = Path(tempfile.gettempdir()) / ("mp_v%d.mp4" % time.time_ns())
+        vf.write_bytes(base64.b64decode(up["b64"]))
         try:
             vinfo = self.api.upload("video", vf, "video/mp4")
         finally:
@@ -730,14 +705,8 @@ class Host(object):
         vurl = json.loads(vinfo["body"]).get("url")
         curl = None
         if cv.get("b64"):
-            cf = tmp_write(cv["b64"], ".jpg")
-            try:
-                cinfo = self.api.upload("image", cf, cv.get("mime") or "image/jpeg")
-            finally:
-                try:
-                    cf.unlink()
-                except Exception:
-                    pass
+            cinfo = self._upload_b64(cv["b64"], cv.get("mime") or "image/jpeg",
+                                     "mp_cov")
             curl = json.loads(cinfo["body"]).get("url")
         old = (self.api.detail(rid).get("video_info_list") or [{}])
         old0 = old[0] if old else {}
@@ -748,6 +717,72 @@ class Host(object):
         body = PA.build_update_body(detail, {"video_info_list": [entry]})
         self.api.update_item(rid, body)
         return entry
+
+    # ---------- AI 助手（OpenAI 兼容 /chat/completions，Key 只存本机配置） ----------
+    def rpc_ai_get(self, _p):
+        return {"ai": self.cfg.get("ai") or {}}
+
+    def rpc_ai_save(self, p):
+        ai = {"base_url": str(p.get("base_url") or "").strip().rstrip("/"),
+              "api_key": str(p.get("api_key") or "").strip(),
+              "model": str(p.get("model") or "").strip()}
+        for k, v in ai.items():
+            if not v:
+                raise RuntimeError("存在未填项：%s" % k)
+        self.cfg["ai"] = ai
+        core.save_config(self.cfg)
+        self.js_log("[AI] 配置已保存（%s / %s）" % (ai["base_url"], ai["model"]))
+        return {"ok": True}
+
+    @staticmethod
+    def _ai_prompt(kind, text, name):
+        if kind == "test":
+            return "你是连通性测试器。", "回复 ok 两个字母即可。"
+        if kind == "note":
+            return ("你是网易《我的世界》模组商店的运营文案写手。输出PE更新纪要："
+                    "≤200字、纯文本、直接输出正文，不要任何解释/标题/Markdown。"
+                    "格式惯例：以「本次更新：」或版本号开头，要点用「；」连接，"
+                    "突出新内容与体验改进。"), \
+                   ("模组：%s\n原始纪要/更新日志：\n%s" % (name or "未知名", text))
+        if kind == "pc":
+            return ("你是网易《我的世界》模组商店的运营文案写手。输出PC端模组简介："
+                    "≤100字、一到两句话、纯文本直接输出正文，突出核心卖点与玩家收益。"), \
+                   ("模组：%s\n原始简介：\n%s" % (name or "未知名", text))
+        return ("你是网易《我的世界》模组商店的详情文案写手。输出PE商店详情页正文："
+                "总字数≤360字（平台按段落计费，超了会静默截断），3~8个自然段，"
+                "每段一行、用换行分隔；纯文本输出，禁止Markdown符号。"
+                "第一段总览特色，中段每行一个玩法亮点，末段引导下载。"), \
+               ("模组：%s\n当前详情文字：\n%s" % (name or "未知名", text))
+
+    def rpc_ai_polish(self, p):
+        ai = dict(self.cfg.get("ai") or {})
+        for k in ("base_url", "api_key", "model"):
+            if p.get(k):
+                ai[k] = str(p[k]).strip()
+        base = (ai.get("base_url") or "").rstrip("/")
+        key, model = ai.get("api_key"), ai.get("model")
+        if not (base and key and model):
+            raise RuntimeError("未配置 AI：点顶栏「✨ AI」填写接口地址/Key/模型")
+        kind = p.get("kind") or "note"
+        text = str(p.get("text") or "").strip()
+        if kind != "test" and not text:
+            raise RuntimeError("没有可润色的内容")
+        sys_p, usr = self._ai_prompt(kind, text, p.get("name") or "")
+        import requests as _rq
+        r = _rq.post(base + "/chat/completions",
+                     headers={"Authorization": "Bearer %s" % key},
+                     json={"model": model, "temperature": 0.7,
+                           "messages": [{"role": "system", "content": sys_p},
+                                        {"role": "user", "content": usr}]},
+                     timeout=(10, 120))
+        if r.status_code != 200:
+            raise RuntimeError("HTTP %s: %s" % (r.status_code, r.text[:200]))
+        out = ((r.json().get("choices") or [{}])[0].get("message") or {}).get(
+            "content") or ""
+        out = out.strip()
+        if not out:
+            raise RuntimeError("AI 返回为空")
+        return {"text": out, "reply": out[:60]}
 
     def rpc_cfg_get(self, _p):
         return {"mods": self.cfg.get("mods", [])}
@@ -772,51 +807,6 @@ class Host(object):
         rid = self._rid(name)
         page = self.eng._ctx.new_page()
         page.goto("https://mcdev.webapp.163.com/#/pe/edit/%s" % rid)
-        return {"ok": True}
-
-    def rpc_tb_state(self, p):
-        rid = p.get("rid")
-        name = self._name_of_rid(rid)
-        local = self._local_map().get(name) if name else None
-        return {"name": name, "local": local}
-
-    def rpc_tb_pack(self, p):
-        rid = p.get("rid")
-        name = self._name_of_rid(rid)
-        mod = self._mod(name)
-        z = core.pack(mod)
-        self.js_log("[栏] 打包完成: %s" % os.path.basename(z))
-        r = self.eng.apply_and_save(name, {"zip_path": z, "boost": True,
-                                           "name": None, "note": None,
-                                           "activity": None, "pc_intro": None,
-                                           "detail_html": None})
-        return {"zip": os.path.basename(z), "saved": True}
-
-    def rpc_tb_publish(self, p):
-        rid = p.get("rid")
-        name = self._name_of_rid(rid)
-        mod = self._mod(name)
-        z = core.pack(mod)
-        self.js_log("[栏] 打包完成: %s" % os.path.basename(z))
-        info = self.api.upload("zip_package", z, "application/zip")
-        self.js_log("[栏] 直传完成 sign=%s…" % info["sign"][:10])
-        detail = self.api.detail(rid)
-        body = PA.build_update_body(detail, {
-            "new_res": info, "new_res_name": os.path.basename(z),
-            "add_version": True})
-        self.api.update_item(rid, body)
-        # 同步页面显示：直接刷新编辑页
-        try:
-            self.page.reload(wait_until="domcontentloaded")
-        except Exception:
-            pass
-        return {"zip": os.path.basename(z), "saved": True}
-
-    def rpc_tb_submit(self, p):
-        rid = p.get("rid")
-        name = self._name_of_rid(rid)
-        self.eng.open_editor(re.escape(name), key=name)
-        self.eng.submit()
         return {"ok": True}
 
     # ---------- 高层操作（CLI / HTTP API 共用，均在引擎线程执行） ----------
@@ -879,7 +869,7 @@ class Host(object):
 
         def job():
             detail = self.api.detail(rid)
-            r = self._api_publish(rid, mod, detail, p)
+            r = self._api_publish(rid, mod, detail, p, name=name)
             if submit:
                 self.api.apply_review(rid, note or "")
                 r["submitted"] = True
@@ -986,6 +976,163 @@ class Host(object):
             if kw and kw in name:
                 return m
         raise RuntimeError("未配置本地项目: %s" % name)
+
+
+# ================= MCP 服务器（--mcp，stdio JSON-RPC 2.0，供 Agent 即插即用） =================
+MCP_TOOLS = [
+    {"name": "list_works",
+     "description": "列出网易开发者平台账号下全部PE作品（状态/发布时间/本地映射/建议名称与纪要）",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "read_item",
+     "description": "读取某作品全部字段（165键）+ 详情HTML + 图片槽位/视频/攻略",
+     "inputSchema": {"type": "object", "required": ["name"],
+                     "properties": {"name": {"type": "string",
+                       "description": "作品名（list_works 返回的 name）"}}}},
+    {"name": "set_fields",
+     "description": "修改作品任意平台字段并保存（值均为字符串：列表/对象传JSON字面量，布尔传true/false）",
+     "inputSchema": {"type": "object", "required": ["name", "changes"],
+                     "properties": {"name": {"type": "string"},
+                       "changes": {"type": "object",
+                         "description": '如 {"item_name":"新名称","update_summary":"26.11.8更新：…"}'}}}},
+    {"name": "set_pc_detail",
+     "description": "设置PC详情富文本（sync_item_info.info，与PE详情相互独立；上限1000字）",
+     "inputSchema": {"type": "object", "required": ["name", "html"],
+                     "properties": {"name": {"type": "string"},
+                       "html": {"type": "string"}}}},
+    {"name": "add_image",
+     "description": "上传本地图片并追加到PE详情末尾",
+     "inputSchema": {"type": "object", "required": ["name", "image"],
+                     "properties": {"name": {"type": "string"},
+                       "image": {"type": "string", "description": "图片绝对路径"}}}},
+    {"name": "publish",
+     "description": "打包本地项目→直传→update保存；会重生成manifest uuid并把版本号改为当天日期",
+     "inputSchema": {"type": "object", "required": ["name"],
+                     "properties": {"name": {"type": "string"},
+                       "zip": {"type": "boolean", "description": "默认true=打包上传新包"},
+                       "boost": {"type": "boolean", "description": "默认true=提升版本"},
+                       "submit": {"type": "boolean",
+                         "description": "默认false；true=保存后一并提交审核"},
+                       "note": {"type": "string", "description": "PE更新纪要"}}}},
+    {"name": "submit_review",
+     "description": "提交审核（不可逆动作，必须先经用户确认）",
+     "inputSchema": {"type": "object", "required": ["name"],
+                     "properties": {"name": {"type": "string"},
+                       "note": {"type": "string"}}}},
+    {"name": "open_official",
+     "description": "在发布器窗口打开该作品的官方编辑页",
+     "inputSchema": {"type": "object", "required": ["name"],
+                     "properties": {"name": {"type": "string"}}}},
+]
+
+
+def _api_alive():
+    import urllib.request as _u
+    try:
+        with _u.urlopen("http://127.0.0.1:8765/ping", timeout=2) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def _api_call(path, payload, timeout=600):
+    import urllib.request as _u
+    req = _u.Request("http://127.0.0.1:8765/" + path,
+                     data=json.dumps(payload).encode("utf-8"),
+                     headers={"Content-Type": "application/json"})
+    with _u.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def _ensure_publisher():
+    """MCP 是常驻发布器的轻量代理；发布器未运行时拉起一个再继续。"""
+    if _api_alive():
+        return
+    if getattr(sys, "frozen", False):
+        subprocess.Popen([sys.executable], creationflags=core.CREATE_NO_WINDOW)
+    else:
+        raise RuntimeError("发布器未运行：请先执行 启动发布器.bat（源码模式不自动拉起）")
+    for _ in range(60):
+        time.sleep(0.5)
+        if _api_alive():
+            return
+    raise RuntimeError("发布器启动超时（Agent API :8765 未就绪）")
+
+
+def mcp_call(tool, args):
+    _ensure_publisher()
+    name = args.get("name") or ""
+    if tool == "list_works":
+        return _api_call("list", {})["data"]
+    if tool == "read_item":
+        return _api_call("read", {"name": name})["data"]
+    if tool == "set_fields":
+        return _api_call("set", {"name": name,
+                                 "changes": args.get("changes") or {}})
+    if tool == "set_pc_detail":
+        return _api_call("set-pc", {"name": name, "html": args.get("html") or ""})
+    if tool == "add_image":
+        return _api_call("add-image", {"name": name, "image": args.get("image")})
+    if tool == "publish":
+        return _api_call("publish", {"name": name,
+                                     "zip": bool(args.get("zip", True)),
+                                     "boost": bool(args.get("boost", True)),
+                                     "submit": bool(args.get("submit", False)),
+                                     "note": args.get("note")})
+    if tool == "submit_review":
+        return _api_call("submit", {"name": name, "note": args.get("note") or ""})
+    if tool == "open_official":
+        return _api_call("open", {"name": name})
+    raise RuntimeError("未知工具: %s" % tool)
+
+
+def run_mcp():
+    """stdio MCP：换行分隔 JSON-RPC 2.0。Agent 配置示例见 README「Agent 接口」。"""
+    def send(obj):
+        sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
+        sys.stdout.flush()
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            req = json.loads(line)
+        except ValueError:
+            continue
+        rid = req.get("id")
+        method = req.get("method") or ""
+        try:
+            if method == "initialize":
+                send({"jsonrpc": "2.0", "id": rid, "result": {
+                    "protocolVersion": (req.get("params") or {}).get(
+                        "protocolVersion", "2024-11-05"),
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "netease-mod-publisher",
+                                   "version": "26.11.8"}}})
+            elif method == "ping":
+                send({"jsonrpc": "2.0", "id": rid, "result": {}})
+            elif method == "tools/list":
+                send({"jsonrpc": "2.0", "id": rid,
+                      "result": {"tools": MCP_TOOLS}})
+            elif method == "tools/call":
+                params = req.get("params") or {}
+                try:
+                    out = mcp_call(params.get("name") or "",
+                                   params.get("arguments") or {})
+                    send({"jsonrpc": "2.0", "id": rid, "result": {"content": [
+                        {"type": "text",
+                         "text": json.dumps(out, ensure_ascii=False, indent=1)}]}})
+                except Exception as e:
+                    send({"jsonrpc": "2.0", "id": rid, "result": {
+                        "content": [{"type": "text", "text": "错误: %s" % e}],
+                        "isError": True}})
+            elif rid is not None:
+                send({"jsonrpc": "2.0", "id": rid, "error":
+                      {"code": -32601, "message": "未知方法 %s" % method}})
+        except Exception as e:
+            if rid is not None:
+                send({"jsonrpc": "2.0", "id": rid, "error":
+                      {"code": -32603, "message": str(e)}})
+    return 0
 
 
 # ================= Agent CLI（无界面自动化） =================
@@ -1098,6 +1245,8 @@ def main():
             out.write_text("FAIL: %r" % e, encoding="utf-8")
         return
     argv = sys.argv[1:]
+    if "--mcp" in argv:
+        sys.exit(run_mcp())
     if "--cmd" in argv:
         sys.exit(run_cmd(argv))
     import ctypes
