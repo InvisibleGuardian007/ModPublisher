@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""网易开发者平台直连 API（端点参考开源项目 McDevManager 的逆向，BNCL-1.0）。
-传输层走 Playwright 浏览器上下文的 ctx.request：与内嵌浏览器共享轮换 cookie，
-不存在票据竞争。浏览器只用于登录与兜底；所有读写均为显式调用。"""
+"""网易开发者平台直连 API。传输层走 Playwright 浏览器上下文的 ctx.request：
+与内嵌浏览器共享轮换 cookie，不存在票据竞争。浏览器只用于登录与兜底；
+所有读写均为显式调用。"""
 import base64
 import json
 import os
@@ -291,7 +291,7 @@ class Api(object):
              "is_check_apply": False}))
 
 
-# ============ detail → update body（对齐 McDevManager toWorkUpdateDTO 矫正） ============
+# ============ detail → update body（按平台 update 校验要求矫正字段形态） ============
 # changes 里这些键有专门的处理通道，不能进通用覆盖（new_res* 会破坏 res 组装）
 _CHANGE_SKIP = ("new_res", "new_res_name", "add_version", "detail_key")
 
@@ -392,7 +392,7 @@ def build_update_body(detail, changes=None):
     b["activity_desc"] = src("activity_desc") or ""
     b["pe_game_introduction"] = src("pe_game_introduction") or ""
 
-    # —— 边角字段矫正（实测 update 校验要求，端点同 McDevManager DTO）——
+    # —— 边角字段矫正（实测 update 校验要求）——
     # corp_proof_image：非原创/无证明时平台要求不发该键（空串=URL格式错误）
     if not b.get("corp_proof_image"):
         b.pop("corp_proof_image", None)

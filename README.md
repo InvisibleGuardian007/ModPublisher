@@ -6,8 +6,7 @@
 本地 Agent 接口供脚本 / AI 直接驱动。
 
 > 本工具仅操作开发者本人账号下的作品，提审等不可逆动作均需人工确认。
-> 界面为自制实现，与网易官方无关；平台接口形态参考开源项目
-> [BitterLemonn/McDevManager](https://github.com/BitterLemonn/McDevManager)（BNCL-1.0）的逆向成果。
+> 界面与平台接口均为自制实现，与网易官方无关。
 
 ## 功能
 

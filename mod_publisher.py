@@ -665,7 +665,7 @@ class Host(object):
             hit = False
             for c in chan:
                 if int(c.get("channel_id", -1)) == cid:
-                    # 替换槽位：channel_url=上传回执（对齐 McDevManager DTO 形态）
+                    # 替换槽位：channel_url=上传回执（平台 update 接口要求的 DTO 形态）
                     c["channel_url"] = info
                     hit = True
                     break
