@@ -892,11 +892,10 @@ class Host(object):
                 "lan_only": bool(self.cfg.get("web_lan", True))}
 
     def rpc_check_update(self, _p):
-        import requests as _rq
-        r = _rq.get(
+        status, _, data = _http_get(
             "https://api.github.com/repos/InvisibleGuardian007/ModPublisher"
-            "/releases/latest", timeout=(10, 30))
-        j = r.json() if r.status_code == 200 else {}
+            "/releases/latest")
+        j = json.loads(data.decode("utf-8")) if status == 200 else {}
         tag = j.get("tag_name") or ""
         asset = next((a for a in (j.get("assets") or [])
                       if str(a.get("name", "")).endswith(".exe")), None)
@@ -916,7 +915,6 @@ class Host(object):
         """热更新：下载最新 Release 的 exe → 校验 → 换文件 → 自动重启。
         Windows 运行中不能覆盖自身，用「改名旧的→移入新的→拉起新进程」技巧。"""
         import hashlib
-        import requests as _rq
         if not getattr(sys, "frozen", False):
             raise RuntimeError("开发模式不支持热更新：请 git pull 后重跑")
         info = self.rpc_check_update({})
@@ -933,29 +931,24 @@ class Host(object):
                            "title": "下载更新 %s" % tag})
 
         self.js_log("[更新] 开始下载 %s …" % tag)
-        g = _rq.get(asset["url"], stream=True, timeout=(15, 60))
-        if g.status_code != 200:
-            raise RuntimeError("下载失败 HTTP %s" % g.status_code)
-        total = int(g.headers.get("Content-Length") or asset.get("size") or 0)
-        done = 0
-        h = hashlib.sha256()
-        with open(tmp, "wb") as f:
-            for chunk in g.iter_content(262144):
-                f.write(chunk)
-                h.update(chunk)
-                done += len(chunk)
-                if total:
-                    prog(min(1.0, done / total),
-                         "%.1f / %.1f MB" % (done / 1048576, total / 1048576))
+
+        def _pc(frac, got, total):
+            prog(frac, ("%.1f / %.1f MB" % (got / 1048576, total / 1048576))
+                 if total else ("已下载 %.1f MB" % (got / 1048576)))
+
+        status, _, data = _http_get(asset["url"], progress=_pc)
+        if status != 200:
+            raise RuntimeError("下载失败 HTTP %s" % status)
         prog(1.0, "校验中…")
         digest = str(asset.get("digest") or "")
         if digest.startswith("sha256:"):
-            if h.hexdigest() != digest[7:].strip():
-                tmp.unlink(missing_ok=True)
-                raise RuntimeError("SHA256 校验失败，已取消更新（文件不完整或被篡改）")
-        elif asset.get("size") and abs(tmp.stat().st_size - asset["size"]) > 4096:
-            tmp.unlink(missing_ok=True)
+            if hashlib.sha256(data).hexdigest() != digest[7:].strip():
+                raise RuntimeError("SHA256 校验失败，已取消更新"
+                                   "（文件不完整或被篡改）")
+        elif asset.get("size") and abs(len(data) - asset["size"]) > 4096:
             raise RuntimeError("大小校验失败，已取消更新")
+        with open(tmp, "wb") as f:
+            f.write(data)
         self.js_log("[更新] 校验通过，准备重启安装…")
         self.ui_event("update_progress",
                       {"frac": None, "msg": "正在重启安装…", "title": "更新"})
@@ -1496,6 +1489,42 @@ def run_cmd(argv):
             host.submit(lambda: host.eng.close(), timeout=15)
         except Exception:
             pass
+
+
+def _http_get(url, headers=None, progress=None, timeout=(15, 300)):
+    """GET → (status, headers, bytes)。requests 流式优先；
+    证书校验失败（VPN/代理自签 CA 环境）退回系统证书栈（urllib），
+    保证热更新在任何网络环境下可用。"""
+    import requests as _rq
+    try:
+        r = _rq.get(url, stream=True, headers=headers or {}, timeout=timeout)
+        total = int(r.headers.get("Content-Length") or 0)
+        buf = bytearray()
+        got = 0
+        for chunk in r.iter_content(262144):
+            if chunk:
+                buf.extend(chunk)
+                got += len(chunk)
+                if progress and total:
+                    progress(min(1.0, got / total), got, total)
+        return r.status_code, dict(r.headers), bytes(buf)
+    except _rq.exceptions.SSLError:
+        pass
+    import urllib.request as _u
+    req = _u.Request(url, headers=headers or {})
+    with _u.urlopen(req, timeout=timeout[1]) as g:
+        total = int((g.headers or {}).get("Content-Length") or 0)
+        buf = bytearray()
+        got = 0
+        while True:
+            chunk = g.read(262144)
+            if not chunk:
+                break
+            buf.extend(chunk)
+            got += len(chunk)
+            if progress and total:
+                progress(min(1.0, got / total), got, total)
+        return g.status, dict(g.headers or {}), bytes(buf)
 
 
 def main():
