@@ -233,6 +233,25 @@ class BrowserEngine(object):
                 creationflags=CREATE_NO_WINDOW)
         except Exception:
             pass
+        # 清会话恢复数据：否则启动会复原上次被杀时打开的标签页（平台页等）
+        try:
+            d = PROFILE_DIR / "Default" / "Sessions"
+            if d.is_dir():
+                for f in d.iterdir():
+                    try:
+                        f.unlink()
+                    except Exception:
+                        pass
+            for name in ("Current Session", "Current Tabs",
+                         "Last Session", "Last Tabs"):
+                f = PROFILE_DIR / "Default" / name
+                if f.exists():
+                    try:
+                        f.unlink()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     def _cdp_alive(self, wait):
         import urllib.request as _u
