@@ -274,7 +274,9 @@ class BrowserEngine(object):
                 "--no-default-browser-check"]
         if bool(self.cfg.get("headless_browser", False)):
             args.append("--headless=new")
-        args.append("--app=" + self._ui_uri())
+        # --app 指向本地 HTTP 服务（有 favicon.ico=任务栏/窗口都是应用图标）；
+        # 未起 HTTP（测试/兜底）时回退 file:// 协议
+        args.append("--app=" + (self.cfg.get("app_url") or self._ui_uri()))
         self._popped = True
         subprocess.Popen(args, creationflags=CREATE_NO_WINDOW)
         if not self._cdp_alive(30):

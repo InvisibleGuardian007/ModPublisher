@@ -749,6 +749,10 @@ body::before{z-index:0}
       <div class="about-row">手机端（同一局域网）：<span class="mono" id="webUrl">—</span></div>
       <div class="about-row">安装：
         <button class="ghost" id="btnAppInstall" style="padding:3px 12px;font-size:12px">📦 安装到系统（桌面/开始菜单快捷方式 + 卸载入口）</button></div>
+      <div class="about-row">开发者：<b>InvisibleGuardian007</b>（隐形守护者）·
+        <a href="https://github.com/InvisibleGuardian007/ModPublisher" target="_blank"
+           rel="noopener" style="color:var(--accent)">GitHub</a> ·
+        <a href="mailto:3366434156@qq.com" style="color:var(--accent)">3366434156@qq.com</a></div>
       <div class="about-row"><a href="https://github.com/InvisibleGuardian007/ModPublisher"
         target="_blank" rel="noopener" style="color:var(--accent)">GitHub 仓库 / 给个 Star ⭐</a></div>
       <div class="ai-tip">本工具仅操作开发者本人账号下的作品；提审等不可逆动作均需人工确认。
@@ -864,7 +868,7 @@ async function py(action,payload){
     return new Promise((res,rej)=>{
       window.__pyCalls[id]=v=>v.ok?res(v.data):rej(new Error(v.error||"失败"));
       window.__pyRequest(action,JSON.stringify(payload||{}),id)})}
-  const r=await fetch("rpc",{method:"POST",
+  const r=await fetch("rpc"+location.search,{method:"POST",
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify({action,payload:payload||{}})});
   const j=await r.json();

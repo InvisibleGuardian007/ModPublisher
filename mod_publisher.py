@@ -979,6 +979,17 @@ class Host(object):
         import shutil
         if not getattr(sys, "frozen", False):
             raise RuntimeError("开发模式无需安装：源码直接跑 启动发布器.bat")
+        # 已用安装程序装过（Inno 低权限写入 HKCU，键名带 _is1 后缀）→ 不重复
+        import winreg
+        try:
+            winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Uninstall"
+                r"\{A7C3E1D0-6F5B-4E0A-9C7D-1E2F3A4B5C6D}_is1")
+            return {"installed": True, "exe": "",
+                    "steps": ["已通过安装程序安装，快捷方式与卸载入口均已就绪"]}
+        except OSError:
+            pass
         exe = Path(sys.executable).resolve()
         tdir = Path(os.environ.get("LOCALAPPDATA", exe.parent)) / "Programs" / "ModPublisher"
         tdir.mkdir(parents=True, exist_ok=True)
@@ -1150,6 +1161,21 @@ Set-ItemProperty $k -Name NoRepair -Value 1 -Type DWord
 
             def do_GET(self):
                 u = _up.urlparse(self.path)
+                if u.path == "/favicon.ico":
+                    fp = Path(__file__).resolve().parent / "docs" / "icon.ico"
+                    if not fp.exists() and getattr(sys, "frozen", False):
+                        fp = (Path(getattr(sys, "_MEIPASS",
+                              Path(sys.executable).parent)) / "docs" / "icon.ico")
+                    if fp.exists():
+                        b = fp.read_bytes()
+                        self.send_response(200)
+                        self.send_header("Content-Type", "image/x-icon")
+                        self.send_header("Content-Length", str(len(b)))
+                        self.end_headers()
+                        self.wfile.write(b)
+                    else:
+                        self._send({"ok": False}, 404)
+                    return
                 if u.path == "/ui":
                     # 手机端入口：token 防护（同机打开无 token 也放行）
                     if not (_tok_ok(u.query, self.headers)
@@ -1646,17 +1672,18 @@ def main():
         pass
 
     host = Host(core.load_config())
+    try:   # HTTP 先起：--app 窗口直接指向本地 UI（favicon 即应用图标）
+        port = host.serve_http(8765)
+        host.cfg["app_url"] = host.web_url()
+        host.js_log("[Agent API] http://127.0.0.1:%d （list/read/set/set-pc/add-image/publish/submit）" % port)
+    except Exception as e:
+        host.js_log("[Agent API] 启动失败: %s" % e)
     try:
         host.start()
     except Exception as e:
         box("启动失败：%s\n\n常见原因：已有另一个发布器实例在运行并占用登录数据"
             "（请先关闭它再打开）。" % e)
         return
-    try:
-        port = host.serve_http(8765)
-        host.js_log("[Agent API] http://127.0.0.1:%d （list/read/set/set-pc/add-image/publish/submit）" % port)
-    except Exception as e:
-        host.js_log("[Agent API] 启动失败: %s" % e)
     if "--reside" in sys.argv:
         # 常驻模式（Agent 用）：窗口关闭不退出进程，HTTP API 常驻，
         # 下次接口调用自动重开浏览器窗口。Ctrl+C 退出。
