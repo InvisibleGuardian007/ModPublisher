@@ -2,7 +2,7 @@
 ; 编译：ISCC.exe installer\ModPublisher.iss → dist\ModPublisher-*-setup.exe
 
 #define MyAppName "网易模组发布器"
-#define MyAppVersion "26.11.10"
+#define MyAppVersion "26.11.11"
 #define MyAppPublisher "InvisibleGuardian007"
 #define MyAppURL "https://github.com/InvisibleGuardian007/ModPublisher"
 #define MyAppExeName "网易模组发布器.exe"

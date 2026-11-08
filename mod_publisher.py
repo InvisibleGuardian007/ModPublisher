@@ -17,7 +17,7 @@ from pathlib import Path
 import publish_api as PA
 import publish_core as core
 
-APP_VERSION = "26.11.10"
+APP_VERSION = "26.11.11"
 REPO_URL = "https://github.com/InvisibleGuardian007/ModPublisher"
 
 try:
