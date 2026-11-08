@@ -406,6 +406,26 @@ details summary:hover{color:var(--accent)}
 #aiModal .ai-tip{font-size:11px;color:var(--muted);line-height:1.7;margin-top:11px}
 #aiModal .mf{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);
   padding-top:10px;margin-top:14px}
+/* ============ AI 生图弹窗 ============ */
+#genModal .box{background:var(--card);border:1px solid var(--line);border-radius:14px;
+  width:min(480px,94vw);padding:16px 20px 14px;box-shadow:var(--shadow-md);
+  animation:pop .18s ease;max-height:92vh;overflow:auto}
+#genModal .mh{display:flex;align-items:center;gap:10px;padding-bottom:10px;
+  border-bottom:1px solid var(--line)}
+#genModal .mh b{white-space:nowrap;flex-shrink:0}
+#genModal .mh .tip{font-size:11.5px;color:var(--muted)}
+#genModal .airow{margin-top:11px}
+#genModal .airow label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+#genModal textarea,#genModal select{padding:8px 11px;border:1px solid var(--line);
+  border-radius:9px;font-size:13px;background:var(--input);color:var(--fg);
+  outline:none;font-family:inherit;transition:border-color .12s}
+#genModal textarea{width:100%;resize:vertical;line-height:1.6}
+#genModal select{min-width:130px}
+#genModal textarea:focus,#genModal select:focus{border-color:var(--accent)}
+#genModal .mf{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);
+  padding-top:10px;margin-top:14px;flex-wrap:wrap}
+#genModal .ai-tip{font-size:11px;color:var(--muted);line-height:1.7;margin-top:11px}
+#genSlotList{display:none;flex-wrap:wrap;gap:6px;margin-top:9px}
 /* ============ 响应式自适应 ============ */
 #btnNav{display:none}
 @media (max-width:1200px){
@@ -532,7 +552,8 @@ details summary:hover{color:var(--accent)}
         <button class="ghost" id="btnNameSug">建议名称</button></div>
       <div class="frow"><label>只读信息</label><div class="ro" id="fRo">—</div></div>
       <div class="frow"><label>活动参与说明</label>
-        <input type="text" id="fActivity" style="flex:1"></div>
+        <input type="text" id="fActivity" style="flex:1">
+        <button class="ghost" id="btnActAi" title="AI润色">✨</button></div>
       <div class="frow"><label>模组标签 <a href="javascript:void(0)" class="editlink"
         data-key="tag" title="平台标签为结构化数据：点此在高级字段中以原始结构修改">✏️</a></label><div class="ro" id="fTags">—</div></div>
       <div class="frow"><label>资源定价 <a href="javascript:void(0)" class="editlink"
@@ -563,9 +584,10 @@ details summary:hover{color:var(--accent)}
       </div>
       <div id="doc" contenteditable="true" data-ph="输入详情介绍，或直接拖入 / 粘贴图片…"></div>
       <div class="doctip" title="字数口径与平台 Quill 编辑器一致：文本 + 段落 + 每图 1 字">字数（平台口径）<span class="counter" id="docCnt"></span></div>
-      <div style="margin-top:8px;display:flex;gap:8px">
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="ghost" id="btnInsImg">🖼 选择图片插入</button>
         <button class="ghost" id="btnDocAi" title="AI 重建详情文字段落（图片会被移除）">✨ AI润色文字</button>
+        <button class="ghost" id="btnGenDoc" title="AI 生成插图并插入详情">✨ AI生图</button>
         <input type="file" id="imgPicker" accept="image/*" multiple style="display:none">
       </div>
     </div>
@@ -587,7 +609,10 @@ details summary:hover{color:var(--accent)}
       <div class="frow"><label title="取自本地 manifest，打包时自动按日期写入">modAPI版本</label><div class="ro" id="fModver">—</div></div>
     </div>
     <div class="card"><h3><span class="ic">🖼</span>图片素材
-      <span class="tip">拖拽图片到对应槽位（或点击选择）→ 自动上传保存</span><span class="fold">▾</span></h3>
+      <span class="tip">拖拽图片到对应槽位（或点击选择）→ 自动上传保存</span></h3>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:9px">
+        <button class="ghost" id="btnGenSlots">✨ AI生图</button>
+        <span class="doctip">描述画面生成图片 → 应用到槽位 / 插入详情</span></div>
       <div id="slots"></div>
     </div>
     <div class="card"><h3><span class="ic">🎬</span>视频 <span class="tip">拖入 mp4 与封面图 → 上传保存</span><span class="fold">▾</span></h3>
@@ -643,13 +668,53 @@ details summary:hover{color:var(--accent)}
       <input type="password" id="aiKey" placeholder="sk-…"></div>
     <div class="airow"><label>模型</label>
       <input type="text" id="aiModel" placeholder="deepseek-chat"></div>
+    <div class="airow" style="margin-top:14px;padding-top:11px;
+      border-top:1px solid var(--line)">
+      <label style="color:var(--fg);font-weight:600">🖼 生图（图片素材 / 详情插图）
+        —— 以下留空则跟随上方 AI 配置</label></div>
+    <div class="airow"><label>生图 API 地址（可空=跟随 AI 地址）</label>
+      <input type="text" id="aiImgBase" placeholder="https://api.openai.com/v1"></div>
+    <div class="airow"><label>生图 Key（可空=跟随 AI Key）</label>
+      <input type="password" id="aiImgKey" placeholder="sk-…"></div>
+    <div class="airow"><label>生图模型</label>
+      <input type="text" id="aiImgModel" placeholder="dall-e-3 / cogview-3-flash / …"></div>
     <div class="ai-tip">Key 只保存在本机「发布配置.json」（已 gitignore，不会入库）。
-      润色时由本机直接调用你配置的接口，不经过任何第三方服务器。</div>
+      润色/生图由本机直接调用你配置的接口，不经过任何第三方服务器。</div>
     <div class="mf">
       <span style="flex:1"></span>
       <button class="ghost" id="aiTest">测试连接</button>
       <button class="pri" id="aiSave">保存</button>
     </div>
+  </div>
+</div>
+<div id="genModal" class="mask" style="display:none">
+  <div class="box">
+    <div class="mh"><b style="font-size:15px">✨ AI 生图</b>
+      <span class="tip">描述画面 → 生成 → 插入详情或应用到槽位</span>
+      <span style="flex:1"></span>
+      <button class="ghost" id="genX" title="关闭" style="padding:3px 10px">✕</button></div>
+    <div class="airow"><label>画面描述（越具体越好：主体 / 风格 / 用途）</label>
+      <textarea id="genPrompt" rows="3"
+        placeholder="例：像素风附魔台，蓝紫色调，游戏图标风格，居中构图"></textarea></div>
+    <div class="airow" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <label style="margin:0;white-space:nowrap">尺寸</label>
+      <select id="genSize">
+        <option value="1024x1024">1024×1024</option>
+        <option value="1024x768">1024×768 横</option>
+        <option value="768x1024">768×1024 竖</option>
+        <option value="1344x768">1344×768 宽横</option>
+      </select>
+      <span style="flex:1"></span>
+      <button class="pri" id="genGo">生成</button></div>
+    <div id="genPrev" style="display:none;text-align:center;margin-top:10px">
+      <img id="genImg" alt="" style="max-width:100%;max-height:260px;
+        border-radius:10px;box-shadow:var(--shadow-sm)">
+      <div class="doctip" id="genTip">生成完成，可执行以下操作（图片自动上传平台）</div></div>
+    <div class="mf" id="genActs" style="display:none">
+      <button class="ghost" id="genToDoc">🖼 插入到详情</button>
+      <button class="ghost" id="genSlotsBtn">📌 应用到槽位…</button></div>
+    <div id="genSlotList"></div>
+    <div class="ai-tip">生图模型在「⚙ 设置」中配置；API 地址 / Key 可留空跟随 AI 配置。</div>
   </div>
 </div>
 <div id="prog"><div class="box">
@@ -800,6 +865,10 @@ function openAI(){
     $("aiBase").value=(r.ai&&r.ai.base_url)||"";
     $("aiKey").value=(r.ai&&r.ai.api_key)||"";
     $("aiModel").value=(r.ai&&r.ai.model)||"";
+    const im=r.ai_image||{};
+    $("aiImgBase").value=im.base_url||"";
+    $("aiImgKey").value=im.api_key||"";
+    $("aiImgModel").value=im.model||"";
     $("aiModal").style.display="flex"}).catch(e=>log(e.message,1))}
 $("btnAI").onclick=openAI;
 $("aiX").onclick=()=>{$("aiModal").style.display="none"};
@@ -808,7 +877,10 @@ $("aiModal").addEventListener("mousedown",e=>{
 $("aiSave").onclick=async()=>{
   try{
     await py("ai_save",{base_url:$("aiBase").value.trim(),
-      api_key:$("aiKey").value.trim(),model:$("aiModel").value.trim()});
+      api_key:$("aiKey").value.trim(),model:$("aiModel").value.trim(),
+      ai_image:{base_url:$("aiImgBase").value.trim(),
+        api_key:$("aiImgKey").value.trim(),
+        model:$("aiImgModel").value.trim()}});
     $("aiModal").style.display="none";
     log("AI 配置已保存 ✓");
   }catch(e){log(e.message,1)}};
@@ -847,6 +919,57 @@ $("btnDocAi").onclick=()=>{
     $("doc").innerHTML=t.split(/\n+/).filter(s=>s.trim())
       .map(s=>"<p>"+esc(s.trim())+"</p>").join("");
     updateCnt()})};
+$("btnActAi").onclick=()=>aiPolish("activity",()=>$("fActivity").value,
+  t=>{$("fActivity").value=t;
+      $("fActivity").classList.add("dirty");state.dirty.activity_desc=t;
+      updateDirtyBadge()});
+
+/* ---------- AI 生图（设置里配模型；API 可跟随 AI 配置） ---------- */
+let genB64=null,genMime="image/png";
+function openGen(){$("genModal").style.display="flex";
+  $("genPrev").style.display="none";$("genActs").style.display="none";
+  $("genSlotList").style.display="none";genB64=null}
+$("btnGenDoc").onclick=openGen;
+$("btnGenSlots").onclick=openGen;
+$("genX").onclick=()=>{$("genModal").style.display="none"};
+$("genModal").addEventListener("mousedown",e=>{
+  if(e.target.id==="genModal")$("genModal").style.display="none"});
+$("genGo").onclick=async()=>{
+  const b=$("genGo"),old=b.textContent;b.textContent="生成中…";b.disabled=true;
+  $("genPrev").style.display="none";$("genActs").style.display="none";
+  try{
+    const r=await py("ai_image",{prompt:$("genPrompt").value,
+      size:$("genSize").value});
+    genB64=r.b64;genMime=r.mime||"image/png";
+    $("genImg").src="data:"+genMime+";base64,"+genB64;
+    $("genPrev").style.display="block";$("genActs").style.display="flex";
+    log("生图完成 ✓ 可插入详情或应用到槽位");
+  }catch(e){log("生图失败："+e.message,1)}
+  b.textContent=old;b.disabled=false};
+async function genFile(){
+  const blob=await (await fetch("data:"+genMime+";base64,"+genB64)).blob();
+  return new File([blob],"ai_gen.png",{type:genMime})}
+$("genToDoc").onclick=async()=>{
+  if(!genB64)return;
+  if(!state.sel)return log("先选择作品",1);
+  $("genModal").style.display="none";
+  await insertImageFile(await genFile())};
+$("genSlotsBtn").onclick=async()=>{
+  if(!genB64)return;
+  if(!state.sel)return log("先选择作品",1);
+  const list=$("genSlotList");
+  if(list.style.display==="flex"){list.style.display="none";return}
+  list.innerHTML="";
+  document.querySelectorAll("#slots .slot").forEach(s=>{
+    const b=document.createElement("button");
+    b.className="ghost";b.style.padding="4px 10px";b.style.fontSize="12px";
+    b.textContent=(s.querySelector(".lb")||{}).textContent||s.dataset.slot;
+    b.onclick=async()=>{list.style.display="none";
+      $("genModal").style.display="none";
+      await slotUpload(s.dataset.slot,await genFile())};
+    list.appendChild(b)});
+  if(!list.children.length)return log("请先选择作品以载入槽位",1);
+  list.style.display="flex"};
 
 /* ---------- 欢迎空态 / 编辑区切换 ---------- */
 function updateWelcome(){
@@ -1010,7 +1133,15 @@ function renderAllFields(){
         d.classList.toggle("dirty",ch);
         if(ch)state.dirty[k]=inp.value;else delete state.dirty[k];
         updateDirtyBadge()};
-      d.appendChild(inp);box.appendChild(d)}
+      d.appendChild(inp);
+      if(typeof v==="string"){   // 每个字符串字段都能 AI 改写
+        const s=document.createElement("a");
+        s.href="javascript:void(0)";s.className="editlink";s.textContent="✨";
+        s.title="AI 改写该字段值";
+        s.onclick=()=>aiPolish("field",()=>inp.value,t=>{
+          inp.value=t;inp.dispatchEvent(new Event("input",{bubbles:true}))});
+        d.querySelector(".fk").appendChild(s)}
+      box.appendChild(d)}
   }
   $("afCnt").textContent="显示 "+shown+" / "+total+" 项";
   if(!shown){const d=document.createElement("div");d.className="nores";
@@ -1337,6 +1468,7 @@ document.addEventListener("keydown",e=>{
   if(e.key==="Escape"){
     if($("mapModal").style.display==="flex")$("mClose").click();
     else if($("aiModal").style.display==="flex")$("aiX").click();
+    else if($("genModal").style.display==="flex")$("genX").click();
     else if($("phoneBox").classList.contains("open"))$("phClose").click();
     else if(document.body.classList.contains("nav-open"))
       document.body.classList.remove("nav-open");

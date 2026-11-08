@@ -67,9 +67,13 @@ STUB = """(()=>{window.__pyRequest=(action,payloadJson,id)=>{
     detail_len:9,detail_imgs:10};
   else if(action==="upload_image")data="https://x/uploaded.png";
   else if(action==="ai_get")data={ai:{base_url:"https://api.test/v1",
-    api_key:"sk-test",model:"m1"}};
+    api_key:"sk-test",model:"m1"},
+    ai_image:{base_url:"",api_key:"",model:"img1"}};
   else if(action==="ai_save")data={ok:true};
   else if(action==="ai_polish")data={text:"润色后的文本",reply:"润色后的文本"};
+  else if(action==="ai_image")data={b64:"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+    +"AAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==",mime:"image/png"};
+  else if(action==="slot_save"||action==="pc_slot_save")data={url:"https://x/slot.png"};
   else if(action==="cfg_get")data={mods:[{id:"A"},{id:"B"},{id:"C"}]};
   else if(action==="cfg_save")data={local:{}};
   else data={ok:true};
@@ -184,6 +188,11 @@ def main():
               pg.text_content("#afCnt"))
         pg.fill("#afKw", "")
         check("过滤清空还原", pg.locator("#allfields .fitem").count() >= 31)
+        # 字段级 AI 改写（首个字符串字段的 ✨）
+        pg.locator("#allfields .fitem .fk .editlink").first.click()
+        pg.wait_for_timeout(250)
+        check("字段AI改写", pg.locator("#allfields .fitem input").first
+              .input_value() == "润色后的文本")
         check("底栏作品名", "趣味附魔" in pg.text_content("#barMod"))
 
         # 3) 规范键脏值跟踪 + 改动徽标
@@ -211,6 +220,7 @@ def main():
         check("AI弹窗打开", pg.get_attribute("#aiModal", "style").find("flex") >= 0)
         check("AI配置回填", pg.input_value("#aiModel") == "m1"
               and pg.input_value("#aiBase") == "https://api.test/v1")
+        check("生图配置回填", pg.input_value("#aiImgModel") == "img1")
         pg.click("#aiX")
         check("AI弹窗关闭", pg.get_attribute("#aiModal", "style").find("none") >= 0)
         pg.click("#btnNoteAi")
@@ -220,6 +230,32 @@ def main():
         check("纪要润色标脏", "dirty" in (pg.get_attribute("#fNote", "class") or ""))
         pg.fill("#fNote", "")
         pg.dispatch_event("#fNote", "input")
+
+        # 4.6) AI 生图：生成 → 插入详情 / 应用槽位（桩）
+        pg.click("#btnGenSlots")
+        check("生图弹窗打开",
+              pg.get_attribute("#genModal", "style").find("flex") >= 0)
+        pg.fill("#genPrompt", "可爱像素风附魔台")
+        pg.click("#genGo")
+        pg.wait_for_timeout(250)
+        check("生图预览", pg.locator("#genImg").is_visible())
+        check("生图操作区", pg.locator("#genActs").is_visible())
+        pg.click("#genSlotsBtn")
+        pg.wait_for_timeout(150)
+        n_chips = pg.locator("#genSlotList button").count()
+        check("槽位chips列表", n_chips == 4, n_chips)
+        pg.locator("#genSlotList button").nth(0).click()
+        pg.wait_for_timeout(300)
+        check("生图应用槽位", (pg.get_attribute("[data-slot='banner'] img", "src")
+              or "").startswith("https://x/slot.png"))
+        before_doc = pg.locator("#doc img").count()
+        pg.click("#btnGenDoc")
+        pg.fill("#genPrompt", "红横幅")
+        pg.click("#genGo")
+        pg.wait_for_timeout(250)
+        pg.click("#genToDoc")
+        pg.wait_for_timeout(300)
+        check("生图插入详情", pg.locator("#doc img").count() == before_doc + 1)
 
         # 5) 建议名称 / 生成纪要
         pg.click("#bName")

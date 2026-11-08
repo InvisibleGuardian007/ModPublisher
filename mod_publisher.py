@@ -720,7 +720,8 @@ class Host(object):
 
     # ---------- AI 助手（OpenAI 兼容 /chat/completions，Key 只存本机配置） ----------
     def rpc_ai_get(self, _p):
-        return {"ai": self.cfg.get("ai") or {}}
+        return {"ai": self.cfg.get("ai") or {},
+                "ai_image": self.cfg.get("ai_image") or {}}
 
     def rpc_ai_save(self, p):
         ai = {"base_url": str(p.get("base_url") or "").strip().rstrip("/"),
@@ -730,12 +731,18 @@ class Host(object):
             if not v:
                 raise RuntimeError("存在未填项：%s" % k)
         self.cfg["ai"] = ai
+        im = p.get("ai_image") or {}
+        # 生图配置可整体留空 = 跟随上方 AI 配置
+        self.cfg["ai_image"] = {
+            "base_url": str(im.get("base_url") or "").strip().rstrip("/"),
+            "api_key": str(im.get("api_key") or "").strip(),
+            "model": str(im.get("model") or "").strip()}
         core.save_config(self.cfg)
         self.js_log("[AI] 配置已保存（%s / %s）" % (ai["base_url"], ai["model"]))
         return {"ok": True}
 
     @staticmethod
-    def _ai_prompt(kind, text, name):
+    def _ai_prompt(kind, text, name, key=""):
         if kind == "test":
             return "你是连通性测试器。", "回复 ok 两个字母即可。"
         if kind == "note":
@@ -748,6 +755,17 @@ class Host(object):
             return ("你是网易《我的世界》模组商店的运营文案写手。输出PC端模组简介："
                     "≤100字、一到两句话、纯文本直接输出正文，突出核心卖点与玩家收益。"), \
                    ("模组：%s\n原始简介：\n%s" % (name or "未知名", text))
+        if kind == "activity":
+            return ("你是网易《我的世界》模组商店运营。改写「活动参与说明」："
+                    "≤60字、一到两句话、纯文本直接输出正文，说明参与的活动"
+                    "与玩家能获得的收益。"), \
+                   ("模组：%s\n当前说明：\n%s" % (name or "未知名", text))
+        if kind == "field":
+            return ("你是网易模组商店的字段编辑助手。按字段含义把当前值改写为"
+                    "更合适的值：纯文本、直接输出新值、不要任何解释；"
+                    "若当前值是JSON结构，保持原结构只优化其中的文本内容。"), \
+                   ("作品：%s\n字段名：%s\n当前值：\n%s"
+                    % (name or "未知名", key or "(未知)", text))
         return ("你是网易《我的世界》模组商店的详情文案写手。输出PE商店详情页正文："
                 "总字数≤360字（平台按段落计费，超了会静默截断），3~8个自然段，"
                 "每段一行、用换行分隔；纯文本输出，禁止Markdown符号。"
@@ -767,7 +785,8 @@ class Host(object):
         text = str(p.get("text") or "").strip()
         if kind != "test" and not text:
             raise RuntimeError("没有可润色的内容")
-        sys_p, usr = self._ai_prompt(kind, text, p.get("name") or "")
+        sys_p, usr = self._ai_prompt(kind, text, p.get("name") or "",
+                                     p.get("key") or "")
         import requests as _rq
         r = _rq.post(base + "/chat/completions",
                      headers={"Authorization": "Bearer %s" % key},
@@ -783,6 +802,43 @@ class Host(object):
         if not out:
             raise RuntimeError("AI 返回为空")
         return {"text": out, "reply": out[:60]}
+
+    def rpc_ai_image(self, p):
+        """文生图（OpenAI 兼容 /images/generations）；生图配置留空跟随 AI 配置。"""
+        ai = dict(self.cfg.get("ai") or {})
+        ic = dict(self.cfg.get("ai_image") or {})
+        for k in ("base_url", "api_key", "model"):
+            if p.get(k):
+                ic[k] = str(p[k]).strip()
+        base = (ic.get("base_url") or ai.get("base_url") or "").rstrip("/")
+        key = ic.get("api_key") or ai.get("api_key")
+        model = ic.get("model")
+        if not (base and key and model):
+            raise RuntimeError("未配置生图：点顶栏「⚙ 设置」填写生图模型"
+                               "（API 地址/Key 可留空跟随 AI 配置）")
+        prompt = str(p.get("prompt") or "").strip()
+        if not prompt:
+            raise RuntimeError("请先输入画面描述")
+        import requests as _rq
+        r = _rq.post(base + "/images/generations",
+                     headers={"Authorization": "Bearer %s" % key},
+                     json={"model": model, "prompt": prompt,
+                           "size": p.get("size") or "1024x1024",
+                           "response_format": "b64_json"},
+                     timeout=(15, 300))
+        if r.status_code != 200:
+            raise RuntimeError("HTTP %s: %s" % (r.status_code, r.text[:200]))
+        d = (r.json().get("data") or [{}])[0]
+        b64 = d.get("b64_json")
+        if not b64 and d.get("url"):   # 部分服务只回 URL，落地成字节再上传
+            import base64 as _b
+            g = _rq.get(d["url"], timeout=(15, 120))
+            if g.status_code != 200:
+                raise RuntimeError("生图结果下载失败 HTTP %s" % g.status_code)
+            b64 = _b.b64encode(g.content).decode()
+        if not b64:
+            raise RuntimeError("生图返回为空")
+        return {"b64": b64, "mime": "image/png"}
 
     def rpc_cfg_get(self, _p):
         return {"mods": self.cfg.get("mods", [])}
