@@ -933,13 +933,16 @@ class Host(object):
         return {"ok": True}
 
     def rpc_phone_preview(self, p):
-        """手机端预览：平台编辑页自带「预览」弹窗实拍（网易官方样式）。"""
+        """手机端预览：平台编辑页自带「预览」弹窗实拍（网易官方样式）。
+        返回 png=弹窗全貌，detail=图文详情分片列表（可能为 None）。"""
         name = p.get("name")
         if not name:
             raise RuntimeError("未选择作品")
         self.ensure()
-        png = self.eng.phone_preview(name)
-        return {"png": base64.b64encode(png).decode("ascii")}
+        png, slices = self.eng.phone_preview(name)
+        return {"png": base64.b64encode(png).decode("ascii"),
+                "detail": [base64.b64encode(s).decode("ascii")
+                           for s in slices] if slices else None}
 
     # ---------- 应用信息 / 检查更新 / 登录门支撑 ----------
     def rpc_app_info(self, _p):

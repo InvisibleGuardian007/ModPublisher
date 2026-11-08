@@ -167,6 +167,7 @@ def main():
         check("平台实拍图就绪", "data:image/png" in (pg.get_attribute("#pvShot", "src") or "")
               and pg.locator("#pvShot").is_visible())
         check("加载态收敛", not pg.locator("#pvLoad").is_visible())
+        check("无详情长图时隐藏", not pg.locator("#pvDetWrap").is_visible())
         pg.click("#pvShot")
         pg.wait_for_timeout(150)
         check("点击放大灯箱", "open" in (pg.get_attribute("#pvZoom", "class") or ""))

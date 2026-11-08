@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -451,59 +452,214 @@ class BrowserEngine(object):
         self._editor_mod = key
         self.log("已进入编辑页: %s" % self.wp.url.split("#")[-1])
 
-    def phone_preview(self, key):
-        """平台编辑页自带的「预览」弹窗实拍（网易官方商店页仿真，非自制样式）。
-        点编辑页「预览」→ 等 .overlay-box 弹窗图片加载完 → 元素截图 PNG bytes。
-        展示的是平台已保存的线上数据。"""
-        self.open_editor(re.escape(key), key=key)
-        w = self.wp
-        n = w.evaluate("""() => {
-            const els=[...document.querySelectorAll('span')].filter(e=>
-              !e.children.length && (e.textContent||'').trim()==='预览'
-              && e.getBoundingClientRect().width>5);
-            if(!els.length) return 0;
-            els[0].scrollIntoView({block:'center'}); els[0].click(); return 1;}""")
-        if not n:
-            raise RuntimeError("编辑页里没找到「预览」按钮")
-        w.wait_for_selector("div.overlay", state="visible", timeout=10000)
-        # 等弹窗内图片全部解码完成（横幅/详情长图较慢）
-        for _ in range(24):
-            try:
-                done = w.evaluate(
-                    "() => {const im=[...document.querySelectorAll"
-                    "('.overlay-box img')];"
-                    "return im.length>0 && im.every(i=>i.complete&&i.naturalWidth>0)}")
-                if done:
-                    break
-            except Exception:
-                pass
-            w.wait_for_timeout(250)
-        w.wait_for_timeout(400)
-        # 横幅轮播让元素永远"不稳定"，locator.screenshot 会超时——
-        # 直接 CDP 按矩形截图（滚回顶部让 fixed 弹窗坐标=文档坐标）
-        w.evaluate("() => window.scrollTo(0, 0)")
-        w.wait_for_timeout(120)
-        rect = w.evaluate(
-            "() => {const r=document.querySelector('.overlay-box')"
-            ".getBoundingClientRect();"
-            "return {x:r.x, y:r.y, width:r.width, height:r.height}}")
-        dpr = w.evaluate("() => window.devicePixelRatio || 1")
-        sess = w.context.new_cdp_session(w)
+    @staticmethod
+    def _cdp_shot(sess, rect, scale, beyond=True):
+        """CDP 按矩形截图（绕开轮播导致的元素不稳定等待）。
+        beyond=False 时 clip 为视口坐标（分片面板固定在视口内）。"""
         shot = sess.send("Page.captureScreenshot", {
             "format": "png",
             "clip": {"x": rect["x"], "y": rect["y"],
                      "width": rect["width"], "height": rect["height"],
-                     "scale": dpr},
-            "captureBeyondViewport": True})
-        png = base64.b64decode(shot["data"])
-        try:   # 关掉弹窗，编辑页保持干净
-            w.locator("img.overlay-close").first.click(timeout=3000)
-            w.wait_for_selector("div.overlay", state="hidden", timeout=4000)
-        except Exception:
-            w.evaluate(
-                "() => {const o=document.querySelector('div.overlay');"
-                " if(o) o.style.display='none'}")
-        return png
+                     "scale": scale},
+            "captureBeyondViewport": beyond})
+        return base64.b64decode(shot["data"])
+
+    def phone_preview(self, key):
+        """独立线程里跑一次性 playwright 截图（见 _phone_preview_impl）。
+        本方法在引擎线程调用；sync API 同线程只能有一个实例，而截图
+        流程必须用全新实例（隔离 Edge 连续截图掉连接的问题）。"""
+        out = {}
+
+        def _run():
+            try:
+                out["r"] = self._phone_preview_impl(key)
+            except Exception as e:   # noqa: BLE001 - 线程边界收集异常
+                out["err"] = e
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        t.join(240)
+        if t.is_alive():
+            raise RuntimeError("预览截图超时（2 分钟无响应）")
+        if "err" in out:
+            raise out["err"]
+        return out["r"]
+
+    def _phone_preview_impl(self, key):
+        """平台编辑页自带的「预览」弹窗实拍（网易官方商店页仿真，非自制样式）。
+        点编辑页「预览」→ 等弹窗图片加载完 → CDP 截图。
+        返回 (弹窗全貌 PNG bytes, 详情分片 PNG list|None)：
+        弹窗内「组件详情」是内部滚动小窗（内容可达上万 px），只拍全貌会
+        截掉大半详情——面板逃逸布局后固定高度逐屏滚动截图，UI 侧按序
+        无缝拼接。整页万级 px 光栅化会卡死渲染进程，故绝不一整张拍。
+
+        整个截图流程跑在独立的一次性 playwright 实例里：Edge 对同一个
+        CDP 客户端连续多次截图存在掉连接的稳定性问题（实测复现），隔离
+        到一次性实例后即使最坏情况也只伤本次预览，主驱动（读档/保存/
+        发布）完全不受影响。截完自动关闭临时窗口。"""
+        with sync_playwright() as pw2:
+            b2 = pw2.chromium.connect_over_cdp(self.CDP, timeout=10000)
+            try:
+                ctx2 = b2.contexts[0]
+                w = ctx2.new_page()
+                try:
+                    w.bring_to_front()   # 前台窗口 rAF 才不被节流
+                    w.goto(self.cfg.get("list_url")
+                           or "https://mcdev.webapp.163.com/#/work/list/pe_component",
+                           wait_until="domcontentloaded", timeout=30000)
+                    w.wait_for_timeout(2500)
+                    row = w.get_by_role("row", name=re.compile(re.escape(key)))
+                    row.wait_for(state="visible", timeout=15000)
+                    btn = row.get_by_role("button", name="更新")
+                    if btn.count() != 1:
+                        btn = row.get_by_role("button", name="编辑")
+                    if btn.count() != 1:
+                        raise RuntimeError("「%s」行里找不到 更新/编辑 按钮" % key)
+                    btn.first.click()
+                    w.wait_for_url(EDITOR_URL_RE, timeout=20000)
+                    w.wait_for_timeout(2500)
+                    n = w.evaluate("""() => {
+                        const els=[...document.querySelectorAll('span')].filter(e=>
+                          !e.children.length && (e.textContent||'').trim()==='预览'
+                          && e.getBoundingClientRect().width>5);
+                        if(!els.length) return 0;
+                        els[0].scrollIntoView({block:'center'}); els[0].click(); return 1;}""")
+                    if not n:
+                        raise RuntimeError("编辑页里没找到「预览」按钮")
+                    w.wait_for_selector("div.overlay", state="visible",
+                                        timeout=10000)
+                    # 等弹窗内图片全部解码完成（横幅/详情长图较慢）
+                    for _ in range(24):
+                        try:
+                            done = w.evaluate(
+                                "() => {const im=[...document.querySelectorAll"
+                                "('.overlay-box img')];"
+                                "return im.length>0 && im.every("
+                                "i=>i.complete&&i.naturalWidth>0)}")
+                            if done:
+                                break
+                        except Exception:
+                            pass
+                        w.wait_for_timeout(250)
+                    w.wait_for_timeout(400)
+                    png, slices = None, None
+                    try:
+                        sess = w.context.new_cdp_session(w)
+                        # 滚回顶部让 fixed 弹窗坐标=文档坐标
+                        w.evaluate("() => window.scrollTo(0, 0)")
+                        w.wait_for_timeout(150)
+                        dpr = w.evaluate("() => window.devicePixelRatio || 1")
+                        vp = w.evaluate(
+                            "() => {const r=document.querySelector('.overlay-box')"
+                            ".getBoundingClientRect();"
+                            "return {x:r.x, y:r.y, width:r.width, height:r.height,"
+                            "vh: window.innerHeight}}")
+                        beyond = vp["y"] + vp["height"] > vp["vh"] + 2
+                        png = self._cdp_shot(sess, vp, dpr, beyond=beyond)
+                        # ---- 详情分片：样式表改造 + 逐屏滚动截图 ----
+                        # 关键：截图表面尊重样式表规则但会丢内联定位/变换
+                        # （Edge 绘制怪癖，实测多轮），所以面板增高/隐藏
+                        # chrome/白底全部走注入 <style>，不能用内联样式。
+                        # 分片高度不能超过 .overlay-box 的可见高度（它自身
+                        # overflow:hidden 会裁掉超出部分，造成接缝丢行）。
+                        info = w.evaluate("""() => {
+                          const c = document.querySelector('.overlay-box .overlay-content');
+                          if (!c || c.scrollHeight <= c.clientHeight + 8)
+                            return null;
+                          const vh = window.innerHeight || 800;
+                          const boxH = c.closest('.overlay-box').clientHeight;
+                          const ch = Math.min(720, boxH - 4, vh - 160);
+                          const r0 = c.getBoundingClientRect();
+                          const st = document.createElement('style');
+                          st.id = '__mpCap';
+                          st.textContent = [
+                            '.overlay-box .overlay-content{',
+                            '  position:absolute !important;',
+                            '  top:0px !important;',
+                            '  left:' + Math.round(r0.x) + 'px !important;',
+                            '  width:' + Math.round(r0.width) + 'px !important;',
+                            '  height:' + ch + 'px !important;',
+                            '  background:#fff !important;',
+                            '  z-index:99999 !important;',
+                            '  transform:none !important; margin:0 !important;',
+                            '  overflow:auto !important;',
+                            '  scrollbar-width:none !important;',
+                            '  scroll-behavior:auto !important;',
+                            '  visibility:visible !important;}',
+                            '.overlay-box .overlay-content::-webkit-scrollbar'
+                              + '{display:none}',
+                            'div.overlay, .overlay-box',
+                            '  {visibility:hidden !important;}',
+                          ].join('');
+                          document.head.appendChild(st);
+                          return {ch: ch, scroll: c.scrollHeight};
+                        }""")
+                        if info:
+                            ch = int(info["ch"])
+                            total = int(info["scroll"])
+                            chunks = min(40, -(-total // ch))
+                            slices = []
+                            w.wait_for_timeout(500)
+                            rc = w.evaluate(
+                                "() => {const c=document.querySelector"
+                                "('.overlay-box .overlay-content');"
+                                " const r=c.getBoundingClientRect();"
+                                " return {x:r.x, y:r.y, w:r.width,"
+                                " vh: window.innerHeight}}")
+                            sess2 = w.context.new_cdp_session(w)
+                            for k in range(chunks):
+                                st_ = min(k * ch, total - ch)
+                                # 双 rAF 等新滚动位置真正绘制完成
+                                w.evaluate(
+                                    "s => new Promise(res => {"
+                                    "const c=document.querySelector"
+                                    "('.overlay-box .overlay-content');"
+                                    "c.scrollTop=s;"
+                                    "requestAnimationFrame(() => "
+                                    "requestAnimationFrame(res))})", st_)
+                                w.wait_for_timeout(280)
+                                shot = {"x": rc["x"], "y": rc["y"],
+                                        "width": rc["w"], "height": ch}
+                                b = rc["y"] + ch > rc["vh"] + 2
+                                try:
+                                    slices.append(self._cdp_shot(sess2, shot, 1,
+                                                                 beyond=b))
+                                except Exception:
+                                    # 会话可能被 Edge 掉线——换新会话补拍本片
+                                    sess2 = w.context.new_cdp_session(w)
+                                    slices.append(self._cdp_shot(sess2, shot, 1,
+                                                                 beyond=b))
+                    except Exception as _e:
+                        self.log("详情长图失败: %s" % _e)
+                        slices = None
+                    finally:
+                        try:   # 摘掉截图样式表（随后关闭临时窗口，随页销毁）
+                            w.evaluate(
+                                "() => {const st=document.getElementById"
+                                "('__mpCap'); if(st) st.remove();}")
+                        except Exception:
+                            pass
+                        try:   # 关掉弹窗（断连也不影响已拍数据返回）
+                            try:
+                                w.locator("img.overlay-close").first.click(
+                                    timeout=3000)
+                            except Exception:
+                                w.evaluate(
+                                    "() => {const o=document.querySelector"
+                                    "('div.overlay'); if(o) o.style.display='none'}")
+                        except Exception:
+                            pass
+                    return png, slices
+                finally:
+                    try:
+                        w.close()
+                    except Exception:
+                        pass
+            finally:
+                try:
+                    b2.close()   # 只断开连接，不动浏览器进程
+                except Exception:
+                    pass
 
     # ---- 读当前值（优先加载，不覆盖） ----
     def read_current(self, row_name):
