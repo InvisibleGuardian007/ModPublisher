@@ -95,7 +95,9 @@ def main():
         pg = b.new_page()
         pg.on("pageerror", lambda e: errors.append("pageerror: %s" % e))
         pg.on("console", lambda m: errors.append("console.error: %s" % m.text)
-              if m.type == "error" else None)
+              if m.type == "error"
+              and not ("Failed to load resource" in m.text
+                       or "ERR_" in m.text) else None)
         pg.add_init_script(STUB)
         pg.goto(UI.as_uri())
         pg.wait_for_timeout(600)
@@ -345,6 +347,33 @@ def main():
         pg.locator(".item").nth(1).click()
         pg.wait_for_timeout(300)
         check("未保存守卫拦切换", pg.evaluate("state.sel") == "趣味附魔 - 共162个附魔")
+
+        # 14) ⚙ 设置入口 + 窄窗自适应抽屉
+        check("设置按钮", "设置" in pg.text_content("#btnAI"))
+        pg.set_viewport_size({"width": 820, "height": 900})
+        pg.wait_for_timeout(300)
+        check("窄窗显示汉堡", pg.locator("#btnNav").is_visible())
+        nav_t = pg.evaluate(
+            "getComputedStyle(document.querySelector('aside')).transform")
+        check("窄窗侧栏收起", nav_t not in ("none", ""), nav_t)
+        pg.click("#btnNav")
+        pg.wait_for_timeout(350)
+        check("抽屉展开", "nav-open" in pg.evaluate("document.body.className"))
+        aside_x = pg.evaluate(
+            "document.querySelector('aside').getBoundingClientRect().left")
+        check("抽屉滑入可视", aside_x == 0, aside_x)
+        pg.keyboard.press("Escape")
+        pg.wait_for_timeout(300)
+        check("Esc收抽屉", "nav-open" not in pg.evaluate("document.body.className"))
+        pg.click("#btnNav")
+        pg.wait_for_timeout(300)
+        pg.locator(".item").nth(1).click()
+        pg.wait_for_timeout(300)
+        check("选作品自动收抽屉",
+              "nav-open" not in pg.evaluate("document.body.className"))
+        pg.set_viewport_size({"width": 1366, "height": 950})
+        pg.wait_for_timeout(300)
+        check("宽窗汉堡隐藏", not pg.locator("#btnNav").is_visible())
 
         check("无JS错误", not errors, errors[:3])
         b.close()

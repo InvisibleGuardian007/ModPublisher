@@ -762,7 +762,7 @@ class Host(object):
         base = (ai.get("base_url") or "").rstrip("/")
         key, model = ai.get("api_key"), ai.get("model")
         if not (base and key and model):
-            raise RuntimeError("未配置 AI：点顶栏「✨ AI」填写接口地址/Key/模型")
+            raise RuntimeError("未配置 AI：点顶栏「⚙ 设置」填写接口地址/Key/模型")
         kind = p.get("kind") or "note"
         text = str(p.get("text") or "").strip()
         if kind != "test" and not text:
