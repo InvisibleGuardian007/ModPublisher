@@ -1083,7 +1083,8 @@ function syncReplica(){
   const bn=$("pvBanner");
   if(bu){if(bn.getAttribute("src")!==bu)bn.src=bu;bn.style.display=""}
   else bn.style.display="none";
-  $("pvCode").textContent=c.mod_code||"00000";
+  $("pvCode").textContent=c.mod_code||
+    (state.fields&&state.fields.normal_number)||"00000";
   const m=(c.price||"").match(/(\d+)\s*钻/);
   $("pvPrice").textContent=m?m[1]:"0";
   const p=state.profile||{};
