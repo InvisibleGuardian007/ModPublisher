@@ -78,8 +78,13 @@ STUB = """(()=>{window.__pyRequest=(action,payloadJson,id)=>{
   else if(action==="app_info")data={version:"26.11.9",
     repo:"https://github.com/InvisibleGuardian007/ModPublisher",
     phone:"http://192.168.1.5:8765/ui?token=abc123"};
-  else if(action==="check_update")data={current:"26.11.9",latest:"26.11.9",
-    has_update:false,url:"https://github.com/InvisibleGuardian007/ModPublisher/releases/latest"};
+  else if(action==="check_update")data={current:"26.11.9",
+    latest:localStorage.getItem("t_upd")?"26.12.0":"26.11.9",
+    has_update:!!localStorage.getItem("t_upd"),
+    asset:{name:"网易模组发布器.exe",url:"https://x/exe",size:1,
+      digest:"sha256:x"},
+    url:"https://github.com/InvisibleGuardian007/ModPublisher/releases/latest"};
+  else if(action==="do_update")data={restarting:true,version:"26.12.0"};
   else if(action==="cfg_save")data={local:{}};
   else data={ok:true};
   setTimeout(()=>window.__pyResolve(id,JSON.stringify({ok:true,data:data})),10);}})()
@@ -102,6 +107,8 @@ def main():
     with sync_playwright() as p:
         b = p.chromium.launch(channel="msedge", headless=True)
         pg = b.new_page()
+        dialog_ok = {"v": True}   # confirm 统一处理；守卫用例临时置 False
+        pg.on("dialog", lambda d: d.accept() if dialog_ok["v"] else d.dismiss())
         pg.on("pageerror", lambda e: errors.append("pageerror: %s" % e))
         pg.on("console", lambda m: errors.append("console.error: %s" % m.text)
               if m.type == "error"
@@ -232,6 +239,20 @@ def main():
         pg.wait_for_timeout(200)
         check("检查更新", "已是最新" in pg.text_content("#updTip"),
               pg.text_content("#updTip"))
+        check("无更新时隐藏立即更新", not pg.locator("#btnDoUpdate").is_visible())
+        # 热更新流：有新版 → 立即更新 → 重启安装（桩）
+        pg.evaluate("localStorage.setItem('t_upd','1')")
+        pg.click("#btnCheckUpd")
+        pg.wait_for_timeout(200)
+        check("发现新版显示更新按钮", pg.locator("#btnDoUpdate").is_visible()
+              and "26.12.0" in pg.text_content("#btnDoUpdate"),
+              pg.text_content("#btnDoUpdate"))
+        check("设置红点", pg.evaluate(
+            "document.getElementById('updDot').classList.contains('on')"))
+        pg.click("#btnDoUpdate")
+        pg.wait_for_timeout(200)
+        check("热更新触发重启", pg.text_content("#btnDoUpdate") == "重启中…")
+        pg.evaluate("localStorage.removeItem('t_upd')")
         pg.click("#aiX")
         check("AI弹窗关闭", pg.get_attribute("#aiModal", "style").find("none") >= 0)
         pg.click("#btnNoteAi")
@@ -388,10 +409,12 @@ def main():
         check("视频预览+文件名", "demo.mp4" in pg.text_content("#vEmpty"),
               pg.text_content("#vEmpty"))
 
-        # 13) 未保存切换守卫（confirm 被自动拒绝 → 不切换）
+        # 13) 未保存切换守卫（confirm 拒绝 → 不切换）
         pg.fill("#fActivity", "新活动说明")
         pg.dispatch_event("#fActivity", "input")
+        dialog_ok["v"] = False
         pg.locator(".item").nth(1).click()
+        dialog_ok["v"] = True
         pg.wait_for_timeout(300)
         check("未保存守卫拦切换", pg.evaluate("state.sel") == "趣味附魔 - 共162个附魔")
 

@@ -896,13 +896,89 @@ class Host(object):
         r = _rq.get(
             "https://api.github.com/repos/InvisibleGuardian007/ModPublisher"
             "/releases/latest", timeout=(10, 30))
-        tag = ((r.json() or {}).get("tag_name") or "") if r.status_code == 200 else ""
+        j = r.json() if r.status_code == 200 else {}
+        tag = j.get("tag_name") or ""
+        asset = next((a for a in (j.get("assets") or [])
+                      if str(a.get("name", "")).endswith(".exe")), None)
+
         def _vn(t):
             return [int(x) for x in re.findall(r"\d+", t)[:3]] or [0]
-        has = bool(tag) and _vn(tag) > _vn(APP_VERSION)
+        has = bool(tag) and _vn(tag) > _vn(APP_VERSION) and asset is not None
         return {"current": APP_VERSION, "latest": tag or "(未知)",
                 "has_update": has,
+                "asset": {"name": (asset or {}).get("name"),
+                          "url": (asset or {}).get("browser_download_url"),
+                          "size": (asset or {}).get("size"),
+                          "digest": (asset or {}).get("digest", "")} or None,
                 "url": REPO_URL + "/releases/latest"}
+
+    def rpc_do_update(self, _p):
+        """热更新：下载最新 Release 的 exe → 校验 → 换文件 → 自动重启。
+        Windows 运行中不能覆盖自身，用「改名旧的→移入新的→拉起新进程」技巧。"""
+        import hashlib
+        import requests as _rq
+        if not getattr(sys, "frozen", False):
+            raise RuntimeError("开发模式不支持热更新：请 git pull 后重跑")
+        info = self.rpc_check_update({})
+        if not info["has_update"]:
+            return {"restarting": False, "reason": "已是最新版本"}
+        asset = info["asset"]
+        exe = Path(sys.executable).resolve()
+        tmp = exe.parent / (exe.name + ".new")
+        tag = info["latest"]
+
+        def prog(frac, msg):
+            self.ui_event("update_progress",
+                          {"frac": frac, "msg": msg,
+                           "title": "下载更新 %s" % tag})
+
+        self.js_log("[更新] 开始下载 %s …" % tag)
+        g = _rq.get(asset["url"], stream=True, timeout=(15, 60))
+        if g.status_code != 200:
+            raise RuntimeError("下载失败 HTTP %s" % g.status_code)
+        total = int(g.headers.get("Content-Length") or asset.get("size") or 0)
+        done = 0
+        h = hashlib.sha256()
+        with open(tmp, "wb") as f:
+            for chunk in g.iter_content(262144):
+                f.write(chunk)
+                h.update(chunk)
+                done += len(chunk)
+                if total:
+                    prog(min(1.0, done / total),
+                         "%.1f / %.1f MB" % (done / 1048576, total / 1048576))
+        prog(1.0, "校验中…")
+        digest = str(asset.get("digest") or "")
+        if digest.startswith("sha256:"):
+            if h.hexdigest() != digest[7:].strip():
+                tmp.unlink(missing_ok=True)
+                raise RuntimeError("SHA256 校验失败，已取消更新（文件不完整或被篡改）")
+        elif asset.get("size") and abs(tmp.stat().st_size - asset["size"]) > 4096:
+            tmp.unlink(missing_ok=True)
+            raise RuntimeError("大小校验失败，已取消更新")
+        self.js_log("[更新] 校验通过，准备重启安装…")
+        self.ui_event("update_progress",
+                      {"frac": None, "msg": "正在重启安装…", "title": "更新"})
+
+        def _install():
+            old = exe.parent / (exe.name + ".old")
+            try:
+                os.replace(exe, old)      # 运行中的 exe 允许改名
+            except Exception:
+                pass
+            try:
+                os.replace(tmp, exe)
+            except Exception:
+                try:
+                    os.replace(old, exe)  # 回滚，保住当前可用版本
+                except Exception:
+                    pass
+                raise
+            os.chdir(exe.parent)
+            subprocess.Popen([str(exe)])
+            os._exit(0)
+        threading.Timer(1.0, _install).start()   # 留出 RPC 响应返回时间
+        return {"restarting": True, "version": tag}
 
     # ---------- 高层操作（CLI / HTTP API 共用，均在引擎线程执行） ----------
     def h_set(self, name, changes):
@@ -1423,6 +1499,15 @@ def run_cmd(argv):
 
 
 def main():
+    # 热更新遗留清理：上次自更新留下的旧/半成品文件
+    if getattr(sys, "frozen", False):
+        _exe = Path(sys.executable)
+        for _left in (_exe.parent / (_exe.name + ".old"),
+                      _exe.parent / (_exe.name + ".new")):
+            try:
+                _left.unlink(missing_ok=True)
+            except Exception:
+                pass
     if "--selftest" in sys.argv:
         out = core.APP_DIR / "selftest.txt"
         try:

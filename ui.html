@@ -393,11 +393,16 @@ details summary:hover{color:var(--accent)}
   white-space:pre-wrap;word-break:break-all}
 /* ============ AI 助手 ============ */
 #aiModal .box{background:var(--card);border:1px solid var(--line);border-radius:14px;
-  width:min(520px,94vw);padding:16px 20px 14px;box-shadow:var(--shadow-md);
-  animation:pop .18s ease}
+  width:min(520px,94vw);max-height:92vh;overflow:auto;padding:16px 20px 14px;
+  box-shadow:var(--shadow-md);animation:pop .18s ease}
 #aiModal .mh{display:flex;align-items:center;gap:10px;padding-bottom:10px;
   border-bottom:1px solid var(--line)}
 #aiModal .mh b{white-space:nowrap;flex-shrink:0}
+#btnAI{position:relative}
+#updDot{position:absolute;top:-4px;right:-4px;width:9px;height:9px;
+  border-radius:50%;background:var(--warn);display:none;
+  box-shadow:0 0 0 2px var(--card)}
+#updDot.on{display:block}
 #aiModal .mh .tip{font-size:11.5px;color:var(--muted)}
 #aiModal .airow{margin-top:11px}
 #aiModal .airow label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
@@ -543,7 +548,7 @@ body::before{z-index:0}
      aria-label="GitHub 仓库"><svg viewBox="0 0 16 16" width="19" height="19"
      fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
   <button class="ghost iconbtn" id="btnLog" title="运行日志">📜<span id="logUnread"></span></button>
-  <button class="ghost" id="btnAI" title="设置 · AI 接口 Key 等">⚙ 设置</button>
+  <button class="ghost" id="btnAI" title="设置 · AI 接口 Key 等">⚙ 设置<span id="updDot"></span></button>
   <button class="ghost" id="btnTheme">☀️ 浅色</button>
   <button class="ghost iconbtn" id="btnRefresh" title="刷新（列表+当前表单全量重载）">⟳</button>
   <button class="pri" id="btnLogin">登录平台</button>
@@ -709,6 +714,7 @@ body::before{z-index:0}
       <label style="color:var(--fg);font-weight:600">应用</label>
       <div class="about-row">版本 <b id="aboutVer">—</b>
         <button class="ghost" id="btnCheckUpd" style="padding:3px 12px;font-size:12px">检查更新</button>
+        <button class="pri" id="btnDoUpdate" style="display:none;padding:3px 12px;font-size:12px">立即更新</button>
         <span id="updTip" class="doctip"></span></div>
       <div class="about-row">手机端（同一局域网）：<span class="mono" id="webUrl">—</span></div>
       <div class="about-row"><a href="https://github.com/InvisibleGuardian007/ModPublisher"
@@ -931,19 +937,36 @@ py("app_info",{}).then(r=>{
   if(r.phone){$("webUrl").textContent=r.phone;
     $("webUrl").style.color="var(--fg)"}}).catch(()=>{});
 $("btnCheckUpd").onclick=async()=>{
-  const b=$("btnCheckUpd"),t=$("updTip");
-  b.disabled=true;t.textContent="检查中…";
+  const b=$("btnCheckUpd"),t=$("updTip"),du=$("btnDoUpdate");
+  b.disabled=true;t.textContent="检查中…";t.onclick=null;
   try{
     const r=await py("check_update",{});
-    t.textContent=r.has_update
-      ?("有新版本 "+r.latest+"！点击此条前往下载")
-      :("已是最新（最新 "+r.latest+"）");
-    t.style.color=r.has_update?"var(--warn)":"var(--muted)";
-    t.style.cursor=r.has_update?"pointer":"";
-    t.onclick=r.has_update?()=>window.open(r.url,"_blank"):null;
-    log(r.has_update?("发现新版本 "+r.latest+" ✓"):"已是最新版本")}
+    if(r.has_update){
+      t.textContent="发现新版本 "+r.latest+"，可一键更新或点此前往下载页";
+      t.style.color="var(--warn)";t.style.cursor="pointer";
+      t.onclick=()=>window.open(r.url,"_blank");
+      du.style.display="";du.textContent="立即更新到 "+r.latest;
+      $("updDot").classList.add("on");
+      log("发现新版本 "+r.latest+" ✓")}
+    else{
+      t.textContent="已是最新（最新 "+r.latest+"）";
+      t.style.color="var(--muted)";t.style.cursor="";t.onclick=null;
+      du.style.display="none";$("updDot").classList.remove("on");
+      log("已是最新版本")}}
   catch(e){t.textContent="检查失败："+e.message}
   b.disabled=false};
+$("btnDoUpdate").onclick=async()=>{
+  if(!confirm("下载新版本并自动重启安装？\n（下载后自动校验 SHA256，失败会取消）"))return;
+  const b=$("btnDoUpdate");
+  b.disabled=true;b.textContent="下载中…";
+  try{
+    const r=await py("do_update",{});
+    if(r.restarting){b.textContent="重启中…";
+      log("更新包就绪，正在自动重启安装 ✓")}
+    else{b.disabled=false;b.textContent="立即更新";
+      log(r.reason||"已是最新")}}
+  catch(e){log("更新失败："+e.message,1);
+    b.disabled=false;b.textContent="立即更新"}};
 $("aiModal").addEventListener("mousedown",e=>{
   if(e.target.id==="aiModal")$("aiModal").style.display="none"});
 $("aiSave").onclick=async()=>{
@@ -1301,6 +1324,7 @@ function caretTo(x,y){
   return false;
 }
 /* ---------- 动作 ---------- */
+let updChecked=false;
 async function refreshAll(){
   const gate=$("loginGate");
   try{
@@ -1329,6 +1353,14 @@ async function refreshAll(){
     renderList();renderInfo();
     // 当前选中作品的表单一并重读（强制：刷新语义=全量重载）
     if(state.sel)await selectItem(state.sel,true);
+    // 启动后静默检查一次更新：有新版在 ⚙ 上亮红点并提示
+    if(!updChecked){updChecked=true;
+      py("check_update",{}).then(r=>{
+        if(r.has_update){$("updDot").classList.add("on");
+          $("updTip").textContent="发现新版本 "+r.latest;
+          $("btnDoUpdate").style.display="";
+          $("btnDoUpdate").textContent="立即更新到 "+r.latest;
+          log("发现新版本 "+r.latest+"：⚙ 设置里可一键热更新",1)}}).catch(()=>{})}
   }catch(e){
     // 启动失败（含手机端 token 失效/网络问题）：登录门显示原因
     const gate=$("loginGate");
@@ -1657,19 +1689,19 @@ $("btnTheme").onclick=()=>{
 try{const t=localStorage.getItem("mp_theme");if(t)applyTheme(t)}catch(_){}
 /* ---------- 引擎推送（打包/直传进度；frac=null+msg=不确定态） ---------- */
 window.__mpEvent=(k,j)=>{
-  if(k==="pack_progress"){
+  if(k==="pack_progress"||k==="update_progress"){
     const d=JSON.parse(j);
     if(d.frac==null){
       if(d.msg){$("prog").style.display="flex";
         $("prog").classList.add("indet");
-        $("progT").textContent=d.msg;
+        $("progT").textContent=d.title||d.msg;
         $("progF").style.width="36%";$("progP").textContent="";
-        $("progM").textContent=""}
+        $("progM").textContent=d.title?d.msg:""}
       else $("prog").style.display="none";
       return}
     $("prog").style.display="flex";
     $("prog").classList.remove("indet");
-    $("progT").textContent=d.frac>=1?"打包完成":"打包中…";
+    $("progT").textContent=d.title||(d.frac>=1?"打包完成":"打包中…");
     $("progF").style.width=Math.round(d.frac*100)+"%";
     $("progP").textContent=Math.round(d.frac*100)+"%";
     $("progM").textContent=d.msg}};
