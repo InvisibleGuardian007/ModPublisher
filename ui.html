@@ -415,6 +415,17 @@ details summary:hover{color:var(--accent)}
 #aiModal .ai-tip{font-size:11px;color:var(--muted);line-height:1.7;margin-top:11px}
 #aiModal .mf{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);
   padding-top:10px;margin-top:14px}
+#setMenu .set-item{display:flex;align-items:center;gap:12px;padding:13px 14px;
+  border:1px solid var(--line);border-radius:11px;background:var(--soft);
+  cursor:pointer;margin-bottom:9px;transition:border-color .15s,transform .12s}
+#setMenu .set-item:hover{border-color:var(--accent);transform:translateX(3px)}
+#setMenu .sic{width:40px;height:40px;border-radius:10px;background:var(--accweak);
+  display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+#setMenu .set-item b{display:block;font-size:13.5px}
+#setMenu .set-item i{font-style:normal;font-size:11px;color:var(--muted);
+  display:block;margin-top:2px}
+#setMenu .chev{margin-left:auto;color:var(--muted);font-size:18px}
+#aiModal .box{max-height:92vh;overflow:auto}
 /* ============ AI 生图弹窗 ============ */
 #genModal .box{background:var(--card);border:1px solid var(--line);border-radius:14px;
   width:min(480px,94vw);padding:16px 20px 14px;box-shadow:var(--shadow-md);
@@ -737,34 +748,52 @@ body::before{z-index:0}
 <div id="aiModal" class="mask" style="display:none">
   <div class="box">
     <div class="mh"><b style="font-size:15px">⚙ 设置</b>
-      <span class="tip">AI 助手接口（OpenAI 兼容：DeepSeek / 智谱 / Moonshot / OpenAI 均可）</span>
+      <span class="tip" id="setTip">选择要配置的项目</span>
       <span style="flex:1"></span>
       <button class="ghost" id="aiX" title="关闭" style="padding:3px 10px">✕</button></div>
-    <div class="airow"><label>AI API 地址（Base URL，到 /v1 为止）</label>
-      <input type="text" id="aiBase" placeholder="https://api.deepseek.com/v1"></div>
-    <div class="airow"><label>API Key</label>
-      <input type="password" id="aiKey" placeholder="sk-…"></div>
-    <div class="airow"><label>模型</label>
-      <input type="text" id="aiModel" placeholder="deepseek-chat"></div>
-    <div class="airow" style="margin-top:14px;padding-top:11px;
-      border-top:1px solid var(--line)">
-      <label style="color:var(--fg);font-weight:600">🖼 生图（图片素材 / 详情插图）
-        —— 以下留空则跟随上方 AI 配置</label></div>
-    <div class="airow"><label>生图 API 地址（可空=跟随 AI 地址）</label>
-      <input type="text" id="aiImgBase" placeholder="https://api.openai.com/v1"></div>
-    <div class="airow"><label>生图 Key（可空=跟随 AI Key）</label>
-      <input type="password" id="aiImgKey" placeholder="sk-…"></div>
-    <div class="airow"><label>生图模型</label>
-      <input type="text" id="aiImgModel" placeholder="dall-e-3 / cogview-3-flash / …"></div>
-    <div class="ai-tip">Key 只保存在本机「发布配置.json」（已 gitignore，不会入库）。
-      润色/生图由本机直接调用你配置的接口，不经过任何第三方服务器。</div>
-    <div class="airow" style="margin-top:14px;padding-top:11px;
-      border-top:1px solid var(--line)">
-      <label style="color:var(--fg);font-weight:600">应用</label>
+    <div id="setMenu" style="padding-top:12px">
+      <div class="set-item" data-panel="pAI"><span class="sic">✨</span>
+        <div style="min-width:0"><b>AI 文本接口</b><i>润色文案（纪要/简介/详情/全字段）使用的 OpenAI 兼容接口</i></div>
+        <span class="chev">›</span></div>
+      <div class="set-item" data-panel="pImg"><span class="sic">🖼</span>
+        <div style="min-width:0"><b>AI 生图</b><i>图片素材 / 详情插图；地址与 Key 可跟随文本接口</i></div>
+        <span class="chev">›</span></div>
+      <div class="set-item" data-panel="pApp"><span class="sic">🧩</span>
+        <div style="min-width:0"><b>应用与更新</b><i>版本 / 一键热更新 / 手机端 / 安装 / 开发者信息</i></div>
+        <span class="chev">›</span></div>
+      <div class="ai-tip">Key 只保存在本机「发布配置.json」（已 gitignore，不会入库）。
+        AI 功能由本机直接调用你配置的接口，不经过任何第三方服务器。</div>
+    </div>
+    <div id="pAI" class="set-panel" style="display:none">
+      <div class="airow"><label>AI API 地址（Base URL，到 /v1 为止）</label>
+        <input type="text" id="aiBase" placeholder="https://api.deepseek.com/v1"></div>
+      <div class="airow"><label>API Key</label>
+        <input type="password" id="aiKey" placeholder="sk-…"></div>
+      <div class="airow"><label>模型</label>
+        <input type="text" id="aiModel" placeholder="deepseek-chat"></div>
+      <div class="mf">
+        <button class="ghost" data-back>‹ 返回</button>
+        <span style="flex:1"></span>
+        <button class="ghost" id="aiTest">测试连接</button>
+        <button class="pri" id="aiSave">保存</button></div>
+    </div>
+    <div id="pImg" class="set-panel" style="display:none">
+      <div class="airow"><label>生图 API 地址（可空=跟随 AI 文本接口）</label>
+        <input type="text" id="aiImgBase" placeholder="https://api.openai.com/v1"></div>
+      <div class="airow"><label>生图 Key（可空=跟随 AI Key）</label>
+        <input type="password" id="aiImgKey" placeholder="sk-…"></div>
+      <div class="airow"><label>生图模型</label>
+        <input type="text" id="aiImgModel" placeholder="dall-e-3 / cogview-3-flash / …"></div>
+      <div class="mf">
+        <button class="ghost" data-back>‹ 返回</button>
+        <span style="flex:1"></span>
+        <button class="pri" id="aiSave2">保存</button></div>
+    </div>
+    <div id="pApp" class="set-panel" style="display:none">
       <div class="about-row">版本 <b id="aboutVer">—</b>
         <button class="ghost" id="btnCheckUpd" style="padding:3px 12px;font-size:12px">检查更新</button>
         <button class="pri" id="btnDoUpdate" style="display:none;padding:3px 12px;font-size:12px">立即更新</button>
-        <span id="updTip" class="doctip"></span></div>
+        <span id="updTip" class="doctip">发布新版本后，这里可一键热更新（自动下载校验重启）</span></div>
       <div class="about-row">手机端（同一局域网）：<span class="mono" id="webUrl">—</span></div>
       <div class="about-row">安装：
         <button class="ghost" id="btnAppInstall" style="padding:3px 12px;font-size:12px">📦 安装到系统（桌面/开始菜单快捷方式 + 卸载入口）</button></div>
@@ -776,11 +805,7 @@ body::before{z-index:0}
         target="_blank" rel="noopener" style="color:var(--accent)">GitHub 仓库 / 给个 Star ⭐</a></div>
       <div class="ai-tip">本工具仅操作开发者本人账号下的作品；提审等不可逆动作均需人工确认。
         界面为自制实现，与网易官方无关。</div>
-    </div>
-    <div class="mf">
-      <span style="flex:1"></span>
-      <button class="ghost" id="aiTest">测试连接</button>
-      <button class="pri" id="aiSave">保存</button>
+      <div class="mf"><button class="ghost" data-back>‹ 返回</button><span style="flex:1"></span></div>
     </div>
   </div>
 </div>
@@ -806,7 +831,7 @@ body::before{z-index:0}
     <div id="genPrev" style="display:none;text-align:center;margin-top:10px">
       <img id="genImg" alt="" style="max-width:100%;max-height:260px;
         border-radius:10px;box-shadow:var(--shadow-sm)">
-      <div class="doctip" id="genTip">生成完成，可执行以下操作（图片自动上传平台）</div></div>
+      <div class="doctip" id="genTip"></div></div>
     <div class="mf" id="genActs" style="display:none">
       <button class="ghost" id="genToDoc">🖼 插入到详情</button>
       <button class="ghost" id="genSlotsBtn">📌 应用到槽位…</button></div>
@@ -815,7 +840,8 @@ body::before{z-index:0}
   </div>
 </div>
 <div id="loginGate"><div class="px-deco">
-  <span class="px p1"><svg viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><rect width="8" height="8" fill="#57A64A"/><rect y="0" width="8" height="1" fill="#4C9340"/><rect y="7" width="8" height="1" fill="#4C9340"/><rect x="7" y="1" width="1" height="1" fill="#65B755"/><rect x="0" y="3" width="1" height="1" fill="#65B755"/><rect x="4" y="6" width="1" height="1" fill="#65B755"/><g fill="#1E2B1A"><rect x="1" y="2" width="2" height="2"/><rect x="5" y="2" width="2" height="2"/><rect x="3" y="4" width="2" height="2"/><rect x="2" y="5" width="1" height="3"/><rect x="5" y="5" width="1" height="3"/></g></svg></span>  <span class="px p2"><svg viewBox="0 0 100 116" shape-rendering="crispEdges" aria-hidden="true"><polygon points="50,0 100,29 50,58 0,29" fill="#7CBD51"/><polygon points="0,29 50,58 50,116 0,87" fill="#7A5230"/><polygon points="100,29 50,58 50,116 100,87" fill="#5E3D22"/><polygon points="0,29 50,58 50,66 0,37" fill="#6BA844"/><polygon points="100,29 50,58 50,66 100,37" fill="#5C9138"/><g fill="#8B6239" opacity=".85"><rect x="14" y="54" width="6" height="6"/><rect x="30" y="74" width="5" height="5"/><rect x="20" y="92" width="6" height="6"/></g><g fill="#4F3520" opacity=".85"><rect x="66" y="62" width="6" height="6"/><rect x="80" y="80" width="5" height="5"/><rect x="60" y="94" width="6" height="6"/></g><g fill="#93D661" opacity=".95"><rect x="40" y="12" width="6" height="6"/><rect x="62" y="22" width="5" height="5"/><rect x="26" y="26" width="5" height="5"/></g></svg></span>
+  <span class="px p1"><svg viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><rect width="8" height="8" fill="#57A64A"/><rect y="0" width="8" height="1" fill="#4C9340"/><rect y="7" width="8" height="1" fill="#4C9340"/><rect x="7" y="1" width="1" height="1" fill="#65B755"/><rect x="0" y="3" width="1" height="1" fill="#65B755"/><rect x="4" y="6" width="1" height="1" fill="#65B755"/><g fill="#1E2B1A"><rect x="1" y="2" width="2" height="2"/><rect x="5" y="2" width="2" height="2"/><rect x="3" y="4" width="2" height="2"/><rect x="2" y="5" width="1" height="3"/><rect x="5" y="5" width="1" height="3"/></g></svg></span>
+  <span class="px p2"><svg viewBox="0 0 100 116" shape-rendering="crispEdges" aria-hidden="true"><polygon points="50,0 100,29 50,58 0,29" fill="#7CBD51"/><polygon points="0,29 50,58 50,116 0,87" fill="#7A5230"/><polygon points="100,29 50,58 50,116 100,87" fill="#5E3D22"/><polygon points="0,29 50,58 50,66 0,37" fill="#6BA844"/><polygon points="100,29 50,58 50,66 100,37" fill="#5C9138"/><g fill="#8B6239" opacity=".85"><rect x="14" y="54" width="6" height="6"/><rect x="30" y="74" width="5" height="5"/><rect x="20" y="92" width="6" height="6"/></g><g fill="#4F3520" opacity=".85"><rect x="66" y="62" width="6" height="6"/><rect x="80" y="80" width="5" height="5"/><rect x="60" y="94" width="6" height="6"/></g><g fill="#93D661" opacity=".95"><rect x="40" y="12" width="6" height="6"/><rect x="62" y="22" width="5" height="5"/><rect x="26" y="26" width="5" height="5"/></g></svg></span>
   <span class="px p3"><svg viewBox="0 0 20 20" shape-rendering="crispEdges" aria-hidden="true"><polygon points="10,1 18,7 10,19 2,7" fill="#4AEDD9"/><polygon points="10,1 18,7 10,9 2,7" fill="#7DF5E6"/><polygon points="10,9 18,7 10,19" fill="#35C6B4"/><rect x="8" y="3" width="3" height="2" fill="#C8FFF8" opacity=".9"/></svg></span>
   <span class="px p4"><svg viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><rect width="8" height="8" fill="#57A64A"/><rect x="3" y="0" width="1" height="8" fill="#4C9340"/><rect x="0" y="3" width="1" height="2" fill="#65B755"/><rect x="6" y="5" width="1" height="2" fill="#65B755"/><g fill="#1E2B1A"><rect x="1" y="2" width="2" height="2"/><rect x="5" y="2" width="2" height="2"/><rect x="3" y="4" width="2" height="2"/><rect x="2" y="5" width="1" height="3"/><rect x="5" y="5" width="1" height="3"/></g></svg></span>
   <span class="px p5"><svg viewBox="0 0 20 20" shape-rendering="crispEdges" aria-hidden="true"><polygon points="10,1 18,7 10,19 2,7" fill="#4AEDD9"/><polygon points="10,1 18,7 10,9 2,7" fill="#7DF5E6"/><polygon points="10,9 18,7 10,19" fill="#35C6B4"/><rect x="7" y="11" width="2" height="2" fill="#C8FFF8" opacity=".85"/></svg></span>
@@ -990,7 +1016,17 @@ function openAI(){
     $("aiImgBase").value=im.base_url||"";
     $("aiImgKey").value=im.api_key||"";
     $("aiImgModel").value=im.model||"";
+    setOpenPanel("setMenu");
     $("aiModal").style.display="flex"}).catch(e=>log(e.message,1))}
+function setOpenPanel(id){
+  ["setMenu","pAI","pImg","pApp"].forEach(x=>$(x).style.display=x===id?"":"none");
+  $("setTip").textContent=({setMenu:"选择要配置的项目",
+    pAI:"AI 文本接口 · OpenAI 兼容（DeepSeek / 智谱 / Moonshot 均可）",
+    pImg:"AI 生图 · 地址与 Key 可跟随文本接口",pApp:"应用与更新"})[id]||""}
+document.querySelectorAll("#setMenu .set-item").forEach(el=>{
+  el.addEventListener("click",()=>setOpenPanel(el.dataset.panel))});
+document.querySelectorAll("#aiModal [data-back]").forEach(b=>{
+  b.addEventListener("click",()=>setOpenPanel("setMenu"))});
 $("btnAI").onclick=openAI;
 $("aiX").onclick=()=>{$("aiModal").style.display="none"};
 /* 版本/手机端地址：启动即回填（登录门角标、设置-应用区） */
@@ -1018,6 +1054,7 @@ $("btnCheckUpd").onclick=async()=>{
       log("已是最新版本")}}
   catch(e){t.textContent="检查失败："+e.message}
   b.disabled=false};
+$("aiSave2").onclick=$("aiSave").onclick;
 $("btnAppInstall").onclick=async()=>{
   const b=$("btnAppInstall"),old=b.textContent;
   b.disabled=true;b.textContent="安装中…";
