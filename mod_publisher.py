@@ -237,6 +237,10 @@ class Host(object):
                 pass
         self.api_page = dock
         self.api.set_context(ctx, page=self.api_page)
+        try:   # 停靠页窗口化后会抢焦点：把主窗口重新带到前台
+            self.page.bring_to_front()
+        except Exception:
+            pass
         try:
             ctx.on("close", lambda _c: self._on_ctx_closed())
             # 附加模式：窗口被用户关掉 = 连接断开，普通模式下进程随之退出
@@ -304,7 +308,8 @@ class Host(object):
 
     def _back_to_ui(self):
         try:
-            self.page.goto(UI_FILE.as_uri(), wait_until="domcontentloaded")
+            self.page.goto(self.cfg.get("app_url") or UI_FILE.as_uri(),
+                           wait_until="domcontentloaded")
         except Exception:
             pass
 
@@ -472,14 +477,37 @@ class Host(object):
         return cur
 
     def rpc_login(self, _p):
+        """登录在**独立窗口**完成（常规桌面软件的授权体验）：
+        主窗口始终停留在应用界面；登录成功后该窗口自动关闭并回到应用。"""
         self.ensure()
-        ok = self.eng.open_login(timeout_s=600)
-        if ok:
+        lp = self.eng._ctx.new_page()
+        try:
+            lp.goto(self.cfg["list_url"], wait_until="domcontentloaded",
+                    timeout=30000)
+        except Exception:
+            pass
+        self.js_log("[登录] 已打开登录窗口，完成后会自动关闭并返回应用")
+        ok = False
+        deadline = time.time() + 600
+        while time.time() < deadline:
             try:
-                self.api.user_info()
+                lp.wait_for_timeout(2000)
             except Exception:
-                ok = False
-        self._back_to_ui()
+                break
+            try:   # 以接口会话为准判定登录成功（页面跳转形态不可靠）
+                self.api.user_info()
+                ok = True
+                break
+            except Exception:
+                pass
+        try:
+            lp.close()
+        except Exception:
+            pass
+        try:
+            self.api.user_info()
+        except Exception:
+            ok = False
         return {"ok": bool(ok)}
 
     def _upload_b64(self, b64, mime, prefix="mp_img"):
