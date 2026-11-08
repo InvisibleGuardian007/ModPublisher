@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """网易模组发布器 - 核心引擎：配置、模组数据、打包、平台读写自动化"""
+import base64
 import glob
 import json
 import os
@@ -204,17 +205,6 @@ class BrowserEngine(object):
         except Exception:
             pass
 
-
-    @property
-    def wp(self):
-        """平台自动化专用页面：新建/复用隐藏副页，主应用窗口永不被导航。"""
-        if self._work is None or self._work.is_closed():
-            self._work = self._ctx.new_page()
-            try:   # 副页会抢焦点：把主应用窗口带回前台
-                self.page.bring_to_front()
-            except Exception:
-                pass
-        return self._work
 
     # ---- 生命周期 ----
     CDP = "http://127.0.0.1:9222"
@@ -460,6 +450,60 @@ class BrowserEngine(object):
         self.wp.wait_for_timeout(2500)
         self._editor_mod = key
         self.log("已进入编辑页: %s" % self.wp.url.split("#")[-1])
+
+    def phone_preview(self, key):
+        """平台编辑页自带的「预览」弹窗实拍（网易官方商店页仿真，非自制样式）。
+        点编辑页「预览」→ 等 .overlay-box 弹窗图片加载完 → 元素截图 PNG bytes。
+        展示的是平台已保存的线上数据。"""
+        self.open_editor(re.escape(key), key=key)
+        w = self.wp
+        n = w.evaluate("""() => {
+            const els=[...document.querySelectorAll('span')].filter(e=>
+              !e.children.length && (e.textContent||'').trim()==='预览'
+              && e.getBoundingClientRect().width>5);
+            if(!els.length) return 0;
+            els[0].scrollIntoView({block:'center'}); els[0].click(); return 1;}""")
+        if not n:
+            raise RuntimeError("编辑页里没找到「预览」按钮")
+        w.wait_for_selector("div.overlay", state="visible", timeout=10000)
+        # 等弹窗内图片全部解码完成（横幅/详情长图较慢）
+        for _ in range(24):
+            try:
+                done = w.evaluate(
+                    "() => {const im=[...document.querySelectorAll"
+                    "('.overlay-box img')];"
+                    "return im.length>0 && im.every(i=>i.complete&&i.naturalWidth>0)}")
+                if done:
+                    break
+            except Exception:
+                pass
+            w.wait_for_timeout(250)
+        w.wait_for_timeout(400)
+        # 横幅轮播让元素永远"不稳定"，locator.screenshot 会超时——
+        # 直接 CDP 按矩形截图（滚回顶部让 fixed 弹窗坐标=文档坐标）
+        w.evaluate("() => window.scrollTo(0, 0)")
+        w.wait_for_timeout(120)
+        rect = w.evaluate(
+            "() => {const r=document.querySelector('.overlay-box')"
+            ".getBoundingClientRect();"
+            "return {x:r.x, y:r.y, width:r.width, height:r.height}}")
+        dpr = w.evaluate("() => window.devicePixelRatio || 1")
+        sess = w.context.new_cdp_session(w)
+        shot = sess.send("Page.captureScreenshot", {
+            "format": "png",
+            "clip": {"x": rect["x"], "y": rect["y"],
+                     "width": rect["width"], "height": rect["height"],
+                     "scale": dpr},
+            "captureBeyondViewport": True})
+        png = base64.b64decode(shot["data"])
+        try:   # 关掉弹窗，编辑页保持干净
+            w.locator("img.overlay-close").first.click(timeout=3000)
+            w.wait_for_selector("div.overlay", state="hidden", timeout=4000)
+        except Exception:
+            w.evaluate(
+                "() => {const o=document.querySelector('div.overlay');"
+                " if(o) o.style.display='none'}")
+        return png
 
     # ---- 读当前值（优先加载，不覆盖） ----
     def read_current(self, row_name):

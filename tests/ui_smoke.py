@@ -88,6 +88,8 @@ STUB = """(()=>{window.__pyRequest=(action,payloadJson,id)=>{
   else if(action==="app_install")data={steps:["程序已复制","快捷方式已创建"],
     exe:"C:/x/网易模组发布器.exe",installed:true};
   else if(action==="cfg_save")data={local:{}};
+  else if(action==="phone_preview")data={png:"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+    +"AAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg=="};
   else data={ok:true};
   setTimeout(()=>window.__pyResolve(id,JSON.stringify({ok:true,data:data})),10);}})()
 """ % {"rows": json.dumps(ROWS, ensure_ascii=False),
@@ -124,7 +126,7 @@ def main():
         check("昵称", pg.text_content("#nick") == "测试者")
         check("状态点亮", "on" in pg.get_attribute("#dot", "class"))
         check("头像首字", pg.text_content("#avatar") == "测")
-        check("品牌区", pg.text_content(".brand b") == "模组发布器")
+        check("品牌区已移除", pg.locator(".brand").count() == 0)
         check("GitHub按钮", pg.get_attribute("#btnGit", "href") ==
               "https://github.com/InvisibleGuardian007/ModPublisher")
         check("列表5项", pg.locator(".item").count() == 5)
@@ -158,20 +160,24 @@ def main():
         check("计数器=Quill口径", "29/404" in pg.text_content("#docCnt"),
               pg.text_content("#docCnt"))
 
-        # 3.5) 手机端预览（实时同步）
+        # 3.5) 手机端预览（网易平台自带预览实拍）
         pg.click("#tPhone")
-        pg.wait_for_timeout(150)
+        pg.wait_for_timeout(300)
         check("手机预览打开", "open" in (pg.get_attribute("#phoneBox", "class") or ""))
-        check("预览正文10图", pg.locator("#pvBody img").count() == 10)
-        check("预览名称同步", pg.text_content("#pvName") == "趣味附魔 - 共162个附魔")
-        check("预览价格同步", "第3档" in pg.text_content("#pvPrice"))
-        check("预览标签同步", pg.locator("#pvTags span").count() == 2)
-        pg.fill("#fName", "预览改名测试")
-        check("预览名称实时", pg.text_content("#pvName") == "预览改名测试")
-        pg.fill("#fName", "趣味附魔 - 共162个附魔")
+        check("平台实拍图就绪", "data:image/png" in (pg.get_attribute("#pvShot", "src") or "")
+              and pg.locator("#pvShot").is_visible())
+        check("加载态收敛", not pg.locator("#pvLoad").is_visible())
+        pg.click("#pvShot")
+        pg.wait_for_timeout(150)
+        check("点击放大灯箱", "open" in (pg.get_attribute("#pvZoom", "class") or ""))
+        pg.click("#pvZoom")
+        pg.wait_for_timeout(150)
+        check("灯箱关闭", "open" not in (pg.get_attribute("#pvZoom", "class") or ""))
+        pg.click("#phRefresh")
+        pg.wait_for_timeout(300)
+        check("刷新后仍实拍", "data:image/png" in (pg.get_attribute("#pvShot", "src") or ""))
         pg.click("#phClose")
         check("手机预览关闭", "open" not in (pg.get_attribute("#phoneBox", "class") or ""))
-        check("预览含商店结构", True)  # 封面/下载按钮/详情分区见下方快照断言
 
         # 3.7) ✏️ 跳转高级字段
         pg.evaluate("document.querySelectorAll('.editlink')[0].click()")

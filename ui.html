@@ -546,8 +546,8 @@ body::before{z-index:0}
 .ll.err{color:#ff9a9a}
 .ll.ok{color:#71d9a3}
 .ll.api{color:#84b6ff}
-/* ============ 手机端预览 ============ */
-#phoneBox{position:fixed;right:14px;bottom:64px;width:360px;max-width:94vw;z-index:210;
+/* ============ 手机端预览（网易平台编辑页自带「预览」弹窗实拍） ============ */
+#phoneBox{position:fixed;right:14px;bottom:64px;width:560px;max-width:94vw;z-index:210;
   display:none;flex-direction:column;gap:8px}
 #phoneBox.open{display:flex;animation:pop .18s ease}
 #phoneBox .ph-head{display:flex;align-items:center;gap:8px;background:var(--card);
@@ -555,39 +555,24 @@ body::before{z-index:0}
   font-weight:600;box-shadow:var(--shadow-md)}
 #phoneBox .ph-head .n{color:var(--muted);font-weight:400;font-size:11px}
 #phoneBox .ph-tip{font-size:10.5px;color:var(--muted);text-align:center}
-.phone{width:300px;margin:0 auto;position:relative;background:#0b0d13;
-  border-radius:34px;padding:10px;box-shadow:0 18px 50px rgba(0,0,0,.45)}
-.phone .notch{position:absolute;top:10px;left:50%;transform:translateX(-50%);
-  width:96px;height:14px;background:#0b0d13;border-radius:0 0 10px 10px;z-index:3}
-.phone .screen{background:#fff;border-radius:24px;height:500px;overflow:auto;
-  padding:0 0 18px;color:#22272f;font-size:13px;line-height:1.75}
-.pv-cover{width:100%;height:150px;object-fit:cover;display:block;
-  border-radius:24px 24px 0 0;background:#eef1f6}
-.store-head{display:flex;gap:10px;align-items:center;padding:10px 13px 0}
-.store-head img{width:52px;height:52px;border-radius:11px;object-fit:cover;
-  background:#f0f2f5;flex-shrink:0;border:1px solid #eef0f4}
-.store-head b{font-size:14px;color:#1c2130;display:block;line-height:1.3;
-  word-break:break-all}
-.pv-price{color:#e8890c;font-weight:700;font-size:12.5px}
-.pv-price::before{content:"💎 ";font-size:11px}
-.st-sub{margin-top:3px}
-.pv-tags{display:flex;gap:4px;flex-wrap:wrap;padding:6px 13px 0}
-.pv-tags span{font-size:10px;color:#5b8cff;background:#eef4ff;border-radius:8px;
-  padding:1px 7px}
-.pv-dl{margin:10px 13px 0;background:linear-gradient(90deg,#3a7afe,#5b8cff);
-  color:#fff;border-radius:20px;text-align:center;padding:7px 0;font-size:13px;
-  font-weight:600;box-shadow:0 3px 10px rgba(58,122,254,.35)}
-.pv-sec{margin:12px 13px 0;padding-top:9px;border-top:1px solid #eef0f4;
-  font-size:12px;font-weight:700;color:#1c2130}
-#pvBody{padding:4px 13px 0}
-#pvBody img{max-width:100%;display:block;margin:6px auto;border-radius:6px}
-#pvBody p{margin:3px 0}
+.ph-body{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  box-shadow:var(--shadow-md);padding:10px;max-height:70vh;overflow:auto}
+#pvShot{width:100%;display:block;border-radius:8px;cursor:zoom-in}
+.pv-load{padding:30px 0;text-align:center;color:var(--muted);font-size:12.5px}
+.pv-load .spin{display:inline-block;width:17px;height:17px;border:2.5px solid var(--line);
+  border-top-color:var(--pri);border-radius:50%;animation:spin .8s linear infinite;
+  vertical-align:-4px;margin-right:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pv-err{padding:16px 12px;text-align:center;color:#ff8a8a;font-size:12.5px}
+#pvZoom{position:fixed;inset:0;background:rgba(8,10,16,.84);z-index:400;display:none;
+  align-items:center;justify-content:center;cursor:zoom-out}
+#pvZoom.open{display:flex;animation:pop .15s ease}
+#pvZoom img{max-width:96vw;max-height:96vh;border-radius:10px;
+  box-shadow:0 24px 80px rgba(0,0,0,.6)}
 </style>
 </head>
 <body>
 <header>
-  <div class="brand"><span class="logo">🎮</span>
-    <div><b>模组发布器</b><i>Mod Publisher</i></div></div>
   <div class="avatar-fb" id="avatar">客</div>
   <div class="who"><b id="nick">未登录</b>
     <div class="st"><span class="dot" id="dot"></span><span id="stTxt">检测中…</span></div>
@@ -656,7 +641,7 @@ body::before{z-index:0}
         <label class="clr" title="背景高亮">🖌<input type="color" id="tHl" value="#fff3bf"></label>
         <button id="tLink" title="插入链接">🔗</button>
         <button id="tImg2" title="插入图片">🖼</button>
-        <button id="tPhone" title="手机端预览（实时同步）">📱</button>
+        <button id="tPhone" title="手机端预览（网易平台自带预览实拍）">📱</button>
         <span class="sep"></span>
         <button id="tClear" title="清除格式">✕格式</button>
         <button id="tFull" title="全屏编辑（Esc 退出）">⛶</button>
@@ -910,26 +895,18 @@ body::before{z-index:0}
   <span class="msg" id="msg"></span><span class="api">Agent API :8765</span>
 </div>
 <div id="phoneBox">
-  <div class="ph-head">📱 手机端预览<span class="n">实时同步</span>
+  <div class="ph-head">📱 手机端预览<span class="n">网易平台自带</span>
     <span style="flex:1"></span>
+    <button class="ghost" id="phRefresh" title="重新获取实拍">⟳ 刷新</button>
     <button class="ghost" id="phClose" title="关闭">✕</button></div>
-  <div class="phone"><div class="notch"></div>
-    <div class="screen">
-      <img id="pvCover" class="pv-cover" src="" alt="" style="display:none">
-      <div class="store-head">
-        <img id="pvIcon" src="" alt="">
-        <div style="min-width:0;flex:1">
-          <b id="pvName">—</b>
-          <div class="st-sub"><span id="pvPrice" class="pv-price">—</span></div>
-        </div>
-      </div>
-      <div id="pvTags" class="pv-tags"></div>
-      <div class="pv-dl">立即下载</div>
-      <div class="pv-sec">图文详情</div>
-      <div id="pvBody"></div>
-    </div></div>
-  <div class="ph-tip">预览为示意，正式样式以游戏内详情页为准</div>
+  <div class="ph-body">
+    <div id="pvLoad" class="pv-load"><span class="spin"></span>正在打开平台编辑页的「预览」弹窗…</div>
+    <div id="pvErr" class="pv-err" style="display:none"></div>
+    <img id="pvShot" src="" alt="网易平台预览" style="display:none" title="点击放大查看">
+  </div>
+  <div class="ph-tip">平台编辑页「预览」弹窗实拍 · 展示已保存的线上数据 · 点图片可放大</div>
 </div>
+<div id="pvZoom"><img src="" alt="预览放大"></div>
 <div id="logBox">
   <div class="lh">运行日志<span class="n" id="logN"></span>
     <span style="flex:1"></span>
@@ -978,7 +955,6 @@ function renderRo(){
   $("fTags").innerHTML=chips(c.tags,"tag");
   $("fGuides").innerHTML=(c.guides&&c.guides.length)
     ?c.guides.map(g=>"<span class='chip guide'>📚 "+esc(g.title)+"</span>").join(""):"无";
-  syncPhone();
 }
 
 /* ---------- 运行日志抽屉（引擎 js_log → window.__mpLog，分级配色） ---------- */
@@ -1000,29 +976,32 @@ $("btnLog").onclick=()=>{logHidden=!logHidden;
 $("logClear").onclick=()=>{$("logLines").innerHTML="";$("logN").textContent=""};
 $("logClose").onclick=()=>{logHidden=true;$("logBox").classList.remove("open")};
 
-/* ---------- 手机端预览（网易商店详情页示意，实时同步） ---------- */
-function syncPhone(){
-  const box=$("phoneBox");
-  if(!box.classList.contains("open"))return;
-  $("pvBody").innerHTML=$("doc").innerHTML;
-  $("pvName").textContent=$("fName").value||"—";
-  const c=state.cur||{};
-  $("pvPrice").textContent=c.price?("💎 "+c.price):"—";
-  $("pvTags").innerHTML=(c.tags&&c.tags.length)
-    ?c.tags.map(t=>"<span>"+esc(t)+"</span>").join(""):"";
-  const ic=$("pvIcon");
-  if(c.banner_pic&&ic.getAttribute("src")!==c.banner_pic)ic.src=c.banner_pic;
-  // 封面：第一张有图的手机图片位，退而求其次用组件ICON
-  const cov=(c.channels||[]).find(ch=>ch.url);
-  const cu=cov?cov.url:(c.banner_pic||"");
-  const cv=$("pvCover");
-  if(cu){cv.style.display="";if(cv.getAttribute("src")!==cu)cv.src=cu}
-  else cv.style.display="none";
+/* ---------- 手机端预览（网易平台编辑页自带「预览」弹窗实拍） ---------- */
+let pvBusy=false;
+function loadPhone(){
+  if(pvBusy)return;
+  if(!state.sel){$("pvLoad").style.display="none";
+    $("pvErr").textContent="先在左侧选择一个作品";$("pvErr").style.display="";return}
+  pvBusy=true;
+  $("pvErr").style.display="none";
+  $("pvShot").style.display="none";
+  $("pvLoad").style.display="";
+  py("phone_preview",{name:state.sel}).then(r=>{
+    $("pvShot").src="data:image/png;base64,"+r.png;
+    $("pvShot").style.display="";
+    $("pvLoad").style.display="none"}).catch(e=>{
+    $("pvLoad").style.display="none";
+    $("pvErr").textContent="获取失败："+e.message;
+    $("pvErr").style.display=""}).finally(()=>{pvBusy=false});
 }
 $("tPhone").onclick=()=>{const b=$("phoneBox");
   b.classList.toggle("open");
-  if(b.classList.contains("open"))syncPhone()};
+  if(b.classList.contains("open"))loadPhone()};
 $("phClose").onclick=()=>$("phoneBox").classList.remove("open");
+$("phRefresh").onclick=()=>loadPhone();
+$("pvShot").onclick=()=>{$("pvZoom").querySelector("img").src=$("pvShot").src;
+  $("pvZoom").classList.add("open")};
+$("pvZoom").onclick=()=>$("pvZoom").classList.remove("open");
 
 /* ---------- 标签/定价 ✏️ 跳转高级字段 ---------- */
 function jumpField(key){
@@ -1244,7 +1223,6 @@ function track(id,key){
 }
 track("fName","item_name");track("fActivity","activity_desc");
 track("fNote","update_summary");track("fPcIntro","pc_intro");
-$("fName").addEventListener("input",syncPhone);
 function dirtyCount(){
   let n=Object.keys(state.dirty).length;
   if(state.cur&&$("doc").innerHTML!==((state.cur.detail_html)||""))n++;
@@ -1409,7 +1387,7 @@ function updateCnt(){
   c.classList.toggle("over",ln>DETAIL_BUDGET||im>DETAIL_IMGS);
   $("doc").classList.toggle("is-empty",
     !(($("doc").innerText||"").trim())&&im===0);
-  updateDirtyBadge();syncPhone()}
+  updateDirtyBadge()}
 $("doc").addEventListener("input",updateCnt);
 async function insertImageFile(f){
   log("上传图片："+f.name);
@@ -1730,7 +1708,9 @@ $("bRun").onclick=async()=>{
     ["fName","fActivity","fNote","fPcIntro"].forEach(
       i=>$(i).classList.remove("dirty"));
     updateDirtyBadge();
-    log("已保存 ✓ "+(r.res_version?("版本 "+r.res_version):"")+"（提交审核需单独点）")}
+    log("已保存 ✓ "+(r.res_version?("版本 "+r.res_version):"")+"（提交审核需单独点）");
+    // 预览展示的是线上数据：保存成功后若开着就刷新实拍
+    if($("phoneBox").classList.contains("open"))loadPhone()}
   catch(e){log("失败："+e.message,1)}
   b.textContent=old;busy(0)};
 $("bSubmit").onclick=async()=>{

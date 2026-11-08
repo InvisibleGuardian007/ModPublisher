@@ -932,6 +932,15 @@ class Host(object):
         page.goto("https://mcdev.webapp.163.com/#/pe/edit/%s" % rid)
         return {"ok": True}
 
+    def rpc_phone_preview(self, p):
+        """手机端预览：平台编辑页自带「预览」弹窗实拍（网易官方样式）。"""
+        name = p.get("name")
+        if not name:
+            raise RuntimeError("未选择作品")
+        self.ensure()
+        png = self.eng.phone_preview(name)
+        return {"png": base64.b64encode(png).decode("ascii")}
+
     # ---------- 应用信息 / 检查更新 / 登录门支撑 ----------
     def rpc_app_info(self, _p):
         return {"version": APP_VERSION, "repo": REPO_URL,
