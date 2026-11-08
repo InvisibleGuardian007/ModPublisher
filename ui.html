@@ -546,34 +546,89 @@ body::before{z-index:0}
 .ll.err{color:#ff9a9a}
 .ll.ok{color:#71d9a3}
 .ll.api{color:#84b6ff}
-/* ============ 手机端预览（网易平台编辑页自带「预览」弹窗实拍） ============ */
-#phoneBox{position:fixed;right:14px;bottom:64px;width:560px;max-width:94vw;z-index:210;
-  display:none;flex-direction:column;gap:8px}
+/* ======== 平台预览（商店页 1:1 版式复刻 · 本地实时渲染 · 零浏览器） ======== */
+#phoneBox{position:fixed;inset:0;z-index:220;display:none;align-items:center;
+  justify-content:center;background:rgba(5,7,12,.62);padding:18px}
 #phoneBox.open{display:flex;animation:pop .18s ease}
-#phoneBox .ph-head{display:flex;align-items:center;gap:8px;background:var(--card);
-  border:1px solid var(--line);border-radius:12px;padding:7px 12px;font-size:12.5px;
-  font-weight:600;box-shadow:var(--shadow-md)}
-#phoneBox .ph-head .n{color:var(--muted);font-weight:400;font-size:11px}
-#phoneBox .ph-tip{font-size:10.5px;color:var(--muted);text-align:center}
-.ph-body{background:var(--card);border:1px solid var(--line);border-radius:12px;
-  box-shadow:var(--shadow-md);padding:10px;max-height:70vh;overflow:auto}
-#pvShot{width:100%;display:block;border-radius:8px;cursor:zoom-in}
-.pv-load{padding:30px 0;text-align:center;color:var(--muted);font-size:12.5px}
-.pv-load .spin{display:inline-block;width:17px;height:17px;border:2.5px solid var(--line);
-  border-top-color:var(--pri);border-radius:50%;animation:spin .8s linear infinite;
-  vertical-align:-4px;margin-right:8px}
-@keyframes spin{to{transform:rotate(360deg)}}
-.pv-err{padding:16px 12px;text-align:center;color:#ff8a8a;font-size:12.5px}
-.pv-sec-t{margin:10px 0 6px;font-size:11.5px;font-weight:700;color:var(--muted)}
-#pvDetail img{width:100%;display:block;cursor:zoom-in;background:#fff}
-#pvZoom{position:fixed;inset:0;background:rgba(8,10,16,.84);z-index:400;display:none;
-  align-items:flex-start;justify-content:center;cursor:zoom-out;overflow:auto;padding:2vh 0}
-#pvZoom.open{display:flex;animation:pop .15s ease}
-#pvZoomBox img{display:block;margin:0 auto 2px;border-radius:8px;
-  box-shadow:0 24px 80px rgba(0,0,0,.6)}
-#pvZoomBox img.solo{width:min(96vw,1200px)}
-#pvZoomBox img.stk{width:min(96vw,520px);border-radius:0;
-  box-shadow:0 6px 24px rgba(0,0,0,.35)}
+.pv-dialog{position:relative;width:min(1240px,97vw);height:min(780px,94vh);
+  display:flex;flex-direction:column;background:#17181c;border-radius:16px;
+  box-shadow:0 30px 90px rgba(0,0,0,.65);overflow:hidden;color:#e8eaf0}
+#phoneBox .ph-head{display:flex;align-items:center;gap:8px;padding:9px 14px;
+  font-size:12.5px;font-weight:600;background:#101114;border-bottom:1px solid #26282e;
+  flex-shrink:0}
+#phoneBox .ph-head .n{color:#8a8f9c;font-weight:400;font-size:11px}
+.pv-body{flex:1;display:grid;grid-template-columns:86px 1fr 460px;min-height:0}
+.pv-rail{background:#101114;display:flex;flex-direction:column;gap:6px;padding:14px 8px}
+.pv-tab{padding:12px 0;text-align:center;font-size:12px;color:#9aa0ad;border-radius:8px}
+.pv-tab.on{background:#2b2e35;color:#fff;font-weight:700}
+.pv-main{padding:16px 20px;overflow:auto;min-width:0}
+.pv-name{font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;
+  word-break:break-all}
+.pv-tagchip{display:inline-block;margin-left:10px;padding:2px 10px;border-radius:6px;
+  background:#4a3319;color:#ffb95e;font-size:11.5px;vertical-align:4px;
+  white-space:nowrap}
+.pv-banner{margin:14px 0 0;min-height:150px}
+.pv-banner img{width:100%;height:300px;object-fit:cover;border-radius:10px;
+  display:block;background:#22252b}
+.pv-dots{display:flex;gap:6px;justify-content:center;margin-top:9px}
+.pv-dots i{width:7px;height:7px;border-radius:50%;background:#3a3e46}
+.pv-dots i.on{background:#e8eaf0}
+.pv-dev{display:flex;align-items:center;gap:11px;margin-top:18px}
+.pv-dev img{width:44px;height:44px;border-radius:8px;background:#22252b;
+  object-fit:cover}
+.pv-dev .dn b{display:block;font-size:13.5px;color:#fff}
+.pv-sub{display:inline-block;margin-top:4px;font-size:10.5px;color:#9aa0ad;
+  border:1px solid #33363e;border-radius:6px;padding:1px 8px}
+.pv-code{margin-left:auto;background:linear-gradient(135deg,#c0392b,#e74c3c);
+  border-radius:9px;padding:8px 18px;color:#fff;text-align:center;cursor:pointer;
+  box-shadow:0 4px 14px rgba(231,76,60,.35);flex-shrink:0}
+.pv-code span{display:block;font-size:10.5px;opacity:.92}
+.pv-code b{font-size:17px;letter-spacing:2px}
+.pv-side{border-left:1px solid #26282e;display:flex;flex-direction:column;
+  min-height:0}
+.pv-stat2{display:grid;grid-template-columns:1fr 1fr;gap:10px;
+  padding:14px 16px 10px;flex-shrink:0}
+.pv-stat{background:linear-gradient(135deg,#3d3320,#4a3d24);
+  border:1px solid #5a4a2c;border-radius:10px;padding:10px 12px}
+.pv-stat span{font-size:11px;color:#c9b98a;display:block}
+.pv-stat b{font-size:19px;color:#ffcf5e;margin-top:2px;display:block}
+.pv-detail{flex:1;margin:0 16px 14px;background:#fff;border-radius:10px;
+  display:flex;flex-direction:column;min-height:0;color:#22272f}
+.pv-dh{display:flex;align-items:center;justify-content:space-between;
+  padding:9px 13px;border-bottom:1px solid #eceef2;flex-shrink:0}
+.pv-dh b{font-size:12.5px;color:#1c2130}
+.pv-dh button{border:0;background:#eef1f6;color:#3b6fe0;border-radius:7px;
+  padding:4px 10px;font-size:11.5px;cursor:pointer;font-weight:600}
+.pv-dh button:hover{background:#e2e8f5}
+.pv-doc{flex:1;overflow:auto;padding:4px 14px 16px;font-size:13px;
+  line-height:1.75}
+.pv-doc img{max-width:100%;display:block;margin:8px auto;border-radius:6px}
+.pv-doc p{margin:6px 0}
+.pv-bar{display:flex;align-items:center;gap:16px;padding:10px 18px;
+  background:#101114;border-top:1px solid #26282e;flex-shrink:0}
+.pv-ic{color:#9aa0ad;font-size:16px}
+.pv-act{display:flex;flex-direction:column;align-items:center;gap:2px;
+  color:#c6cad3;font-size:10.5px;min-width:44px}
+.pv-act i{font-style:normal;font-size:16px}
+.pv-act.gap{margin-left:auto}
+.pv-pricebtn{margin-left:auto;background:linear-gradient(135deg,#ffd75e,#f5b301);
+  color:#4a3200;border:0;border-radius:10px;padding:10px 26px;font-size:15px;
+  font-weight:800;box-shadow:0 4px 14px rgba(245,179,1,.35);cursor:default}
+.pv-note{padding:0 18px 10px;font-size:10.5px;color:#8a8f9c;flex-shrink:0}
+#pvZoom{position:fixed;inset:0;background:#fff;z-index:400;display:none;
+  overflow:auto}
+#pvZoom.open{display:block;animation:pop .15s ease}
+#pvZoomClose{position:fixed;top:16px;right:20px;z-index:401;border:0;
+  background:#eef1f6;color:#1c2130;border-radius:8px;padding:6px 14px;
+  font-size:12.5px;font-weight:700;cursor:pointer}
+#pvZoomDoc{max-width:860px;margin:0 auto;padding:26px 22px 60px;font-size:14px;
+  line-height:1.8;color:#22272f}
+#pvZoomDoc img{max-width:100%;display:block;margin:10px auto;border-radius:6px}
+#pvZoomDoc p{margin:8px 0}
+@media(max-width:1000px){.pv-body{grid-template-columns:0 1fr 380px}
+  .pv-rail{display:none}}
+@media(max-width:860px){.pv-body{grid-template-columns:1fr}
+  .pv-side{border-left:0;border-top:1px solid #26282e}}
 </style>
 </head>
 <body>
@@ -646,7 +701,7 @@ body::before{z-index:0}
         <label class="clr" title="背景高亮">🖌<input type="color" id="tHl" value="#fff3bf"></label>
         <button id="tLink" title="插入链接">🔗</button>
         <button id="tImg2" title="插入图片">🖼</button>
-        <button id="tPhone" title="手机端预览（网易平台自带预览实拍）">📱</button>
+        <button id="tPhone" title="平台预览（商店页 1:1 · 实时同步 · 零浏览器）">📱</button>
         <span class="sep"></span>
         <button id="tClear" title="清除格式">✕格式</button>
         <button id="tFull" title="全屏编辑（Esc 退出）">⛶</button>
@@ -900,22 +955,52 @@ body::before{z-index:0}
   <span class="msg" id="msg"></span><span class="api">Agent API :8765</span>
 </div>
 <div id="phoneBox">
-  <div class="ph-head">📱 手机端预览<span class="n">网易平台自带</span>
+  <div class="pv-dialog">
+  <div class="ph-head">📱 平台预览<span class="n">商店页 1:1 版式 · 数据实时同步（含未保存改动）</span>
     <span style="flex:1"></span>
-    <button class="ghost" id="phRefresh" title="重新获取实拍">⟳ 刷新</button>
     <button class="ghost" id="phClose" title="关闭">✕</button></div>
-  <div class="ph-body">
-    <div id="pvLoad" class="pv-load"><span class="spin"></span>正在打开平台编辑页的「预览」弹窗…</div>
-    <div id="pvErr" class="pv-err" style="display:none"></div>
-    <img id="pvShot" src="" alt="网易平台预览" style="display:none" title="点击放大查看">
-    <div id="pvDetWrap" style="display:none">
-      <div class="pv-sec-t">▼ 图文详情（平台全量实拍，往下滚动查看）</div>
-      <div id="pvDetail"></div>
+  <div class="pv-body">
+    <div class="pv-rail">
+      <div class="pv-tab on">详情</div><div class="pv-tab">评论</div>
+      <div class="pv-tab">相关推荐</div>
+    </div>
+    <div class="pv-main">
+      <div><span class="pv-name" id="pvName">—</span><span
+        class="pv-tagchip" id="pvTag">#组件标签</span></div>
+      <div class="pv-banner"><img id="pvBanner" alt="" style="display:none">
+        <div class="pv-dots"><i class="on"></i><i></i><i></i><i></i><i></i></div></div>
+      <div class="pv-dev">
+        <img id="pvAvatar" alt="">
+        <div class="dn"><b id="pvDev">—</b><span class="pv-sub">☑ 订阅</span></div>
+        <div class="pv-code" id="pvCodeBtn" title="点击复制组件码">
+          <span>复制组件码</span><b id="pvCode">00000</b></div>
+      </div>
+    </div>
+    <div class="pv-side">
+      <div class="pv-stat2">
+        <div class="pv-stat"><span>评分（000人）</span><b>0.0 💎</b></div>
+        <div class="pv-stat"><span>获取量</span><b>🔥 000</b></div>
+      </div>
+      <div class="pv-detail">
+        <div class="pv-dh"><b>组件详情</b><button id="pvFull">⛶ 全屏</button></div>
+        <div class="pv-doc" id="pvDoc"></div>
+      </div>
     </div>
   </div>
-  <div class="ph-tip">平台编辑页「预览」弹窗实拍 · 展示已保存的线上数据 · 点图片可放大</div>
+  <div class="pv-bar">
+    <span class="pv-ic">☰</span><span class="pv-ic">⧉</span>
+    <span class="pv-act gap"><i>🎁</i>赠送</span>
+    <span class="pv-act"><i>↩</i>索要</span>
+    <span class="pv-act"><i>💝</i>心愿单</span>
+    <span class="pv-act"><i>🛒</i>加购</span>
+    <span class="pv-act"><i>🎮</i>会员试玩</span>
+    <button class="pv-pricebtn">💎 <span id="pvPrice">0</span></button>
+  </div>
+  <div class="pv-note">版式按平台「预览」弹窗 1:1 复刻 · 评分/获取量与平台一致为占位显示 ·
+    详情实时取自编辑器（含未保存改动）· 全程本地渲染，不打开任何网页</div>
+  </div>
 </div>
-<div id="pvZoom"><div id="pvZoomBox"></div></div>
+<div id="pvZoom"><button id="pvZoomClose">✕ 关闭全屏</button><div id="pvZoomDoc"></div></div>
 <div id="logBox">
   <div class="lh">运行日志<span class="n" id="logN"></span>
     <span style="flex:1"></span>
@@ -964,6 +1049,7 @@ function renderRo(){
   $("fTags").innerHTML=chips(c.tags,"tag");
   $("fGuides").innerHTML=(c.guides&&c.guides.length)
     ?c.guides.map(g=>"<span class='chip guide'>📚 "+esc(g.title)+"</span>").join(""):"无";
+  syncReplica();
 }
 
 /* ---------- 运行日志抽屉（引擎 js_log → window.__mpLog，分级配色） ---------- */
@@ -985,46 +1071,42 @@ $("btnLog").onclick=()=>{logHidden=!logHidden;
 $("logClear").onclick=()=>{$("logLines").innerHTML="";$("logN").textContent=""};
 $("logClose").onclick=()=>{logHidden=true;$("logBox").classList.remove("open")};
 
-/* ---------- 手机端预览（网易平台编辑页自带「预览」弹窗实拍） ---------- */
-let pvBusy=false;
-function loadPhone(){
-  if(pvBusy)return;
-  if(!state.sel){$("pvLoad").style.display="none";
-    $("pvErr").textContent="先在左侧选择一个作品";$("pvErr").style.display="";return}
-  pvBusy=true;
-  $("pvErr").style.display="none";
-  $("pvShot").style.display="none";
-  $("pvDetWrap").style.display="none";
-  $("pvLoad").style.display="";
-  py("phone_preview",{name:state.sel}).then(r=>{
-    $("pvShot").src="data:image/png;base64,"+r.png;
-    $("pvShot").style.display="";
-    $("pvLoad").style.display="none";
-    if(r.detail&&r.detail.length){
-      $("pvDetail").innerHTML=r.detail.map(d=>
-        "<img src='data:image/png;base64,"+d+"' alt=''>").join("");
-      $("pvDetWrap").style.display=""}}).catch(e=>{
-    $("pvLoad").style.display="none";
-    $("pvErr").textContent="获取失败："+e.message;
-    $("pvErr").style.display=""}).finally(()=>{pvBusy=false});
+/* ---------- 平台预览（商店页 1:1 版式 · 本地实时渲染，零浏览器） ---------- */
+function syncReplica(){
+  if(!$("phoneBox").classList.contains("open"))return;
+  const c=state.cur||{};
+  $("pvName").textContent=$("fName").value||(c.name||"—");
+  $("pvTag").textContent=(c.tags&&c.tags.length)
+    ?"#"+c.tags.join(" #"):"#组件标签";
+  const ban=(c.channels||[]).find(ch=>ch.url);
+  const bu=(ban&&ban.url)||c.banner_pic||"";
+  const bn=$("pvBanner");
+  if(bu){if(bn.getAttribute("src")!==bu)bn.src=bu;bn.style.display=""}
+  else bn.style.display="none";
+  $("pvCode").textContent=c.mod_code||"00000";
+  const m=(c.price||"").match(/(\d+)\s*钻/);
+  $("pvPrice").textContent=m?m[1]:"0";
+  const p=state.profile||{};
+  $("pvDev").textContent=p.nickname||"开发者";
+  if(p.avatar)$("pvAvatar").src=p.avatar;
+  $("pvDoc").innerHTML=$("doc").innerHTML||
+    "<p style='color:#9aa3ad'>（详情为空，在编辑器里写点内容吧）</p>";
 }
-$("tPhone").onclick=()=>{const b=$("phoneBox");
-  b.classList.toggle("open");
-  if(b.classList.contains("open"))loadPhone()};
+$("tPhone").onclick=()=>{$("phoneBox").classList.toggle("open");syncReplica()};
 $("phClose").onclick=()=>$("phoneBox").classList.remove("open");
-$("phRefresh").onclick=()=>loadPhone();
-const pvZoomOpen=src=>{$("pvZoomBox").innerHTML="<img class='solo' src='"+src+"' alt=''>";
+$("pvCodeBtn").onclick=()=>{
+  const t=$("pvCode").textContent;
+  if(t&&t!=="00000"){
+    try{navigator.clipboard.writeText(t).then(()=>log("组件码已复制："+t),
+      ()=>{})}catch(_){}
+  }
+};
+$("pvFull").onclick=()=>{
+  $("pvZoomDoc").innerHTML=$("pvDoc").innerHTML;
   $("pvZoom").classList.add("open");$("pvZoom").scrollTop=0};
-$("pvShot").onclick=()=>pvZoomOpen($("pvShot").src);
-$("pvDetail").onclick=e=>{
-  if(e.target.tagName!=="IMG")return;
-  const srcs=[...$("pvDetail").querySelectorAll("img")].map(i=>i.src);
-  const idx=srcs.indexOf(e.target.src);
-  $("pvZoomBox").innerHTML=srcs.map(s=>"<img class='stk' src='"+s+"' alt=''>").join("");
-  $("pvZoom").classList.add("open");$("pvZoom").scrollTop=0;
-  const im=$("pvZoomBox").querySelectorAll("img")[idx];
-  if(im)im.scrollIntoView()};
-$("pvZoom").onclick=()=>$("pvZoom").classList.remove("open");
+$("pvZoomClose").onclick=()=>$("pvZoom").classList.remove("open");
+$("pvZoom").onclick=e=>{if(e.target.id==="pvZoom")
+  $("pvZoom").classList.remove("open")};
 
 /* ---------- 标签/定价 ✏️ 跳转高级字段 ---------- */
 function jumpField(key){
@@ -1246,6 +1328,7 @@ function track(id,key){
 }
 track("fName","item_name");track("fActivity","activity_desc");
 track("fNote","update_summary");track("fPcIntro","pc_intro");
+$("fName").addEventListener("input",syncReplica);
 function dirtyCount(){
   let n=Object.keys(state.dirty).length;
   if(state.cur&&$("doc").innerHTML!==((state.cur.detail_html)||""))n++;
@@ -1410,7 +1493,7 @@ function updateCnt(){
   c.classList.toggle("over",ln>DETAIL_BUDGET||im>DETAIL_IMGS);
   $("doc").classList.toggle("is-empty",
     !(($("doc").innerText||"").trim())&&im===0);
-  updateDirtyBadge()}
+  updateDirtyBadge();syncReplica()}
 $("doc").addEventListener("input",updateCnt);
 async function insertImageFile(f){
   log("上传图片："+f.name);
@@ -1732,8 +1815,7 @@ $("bRun").onclick=async()=>{
       i=>$(i).classList.remove("dirty"));
     updateDirtyBadge();
     log("已保存 ✓ "+(r.res_version?("版本 "+r.res_version):"")+"（提交审核需单独点）");
-    // 预览展示的是线上数据：保存成功后若开着就刷新实拍
-    if($("phoneBox").classList.contains("open"))loadPhone()}
+    if($("phoneBox").classList.contains("open"))syncReplica()}
   catch(e){log("失败："+e.message,1)}
   b.textContent=old;busy(0)};
 $("bSubmit").onclick=async()=>{
