@@ -1775,10 +1775,10 @@ def main():
         except KeyboardInterrupt:
             pass
         os._exit(0)
-    # 窗口（Edge 本体）关闭 → 引擎结束 → 进程退出
+    # 窗口（Edge 本体）关闭 → 结束引擎并带走全部自有 Edge 窗口（无僵尸）
     host._closed.wait()
     try:
-        host.submit(lambda: host.eng.close(), timeout=10)
+        host.submit(lambda: host.eng.close(kill=True), timeout=10)
     except Exception:
         pass
     os._exit(0)

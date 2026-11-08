@@ -231,13 +231,13 @@ class BrowserEngine(object):
 
     @staticmethod
     def _kill_stale():
-        """杀掉占着 profile 锁但没开调试端口的残留 Edge（无法附加，只能清掉）。"""
+        """清掉本 profile 的全部残留 Edge——僵尸窗口是「跳网页/失联」的根源，
+        启动一律清场重来（窗口复用设计已废弃）。"""
         try:
             subprocess.run(
                 ["powershell", "-NoProfile", "-Command",
                  "Get-CimInstance Win32_Process -Filter \"name='msedge.exe'\" | "
-                 "Where-Object { $_.CommandLine -like '*%s*profile*' -and "
-                 "$_.CommandLine -notlike '*remote-debugging-port*' } | "
+                 "Where-Object { $_.CommandLine -like '*%s*profile*' } | "
                  "ForEach-Object { Stop-Process -Id $_.ProcessId -Force "
                  "-ErrorAction SilentlyContinue }" % APP_DIR.name],
                 capture_output=True, timeout=20,
@@ -288,15 +288,7 @@ class BrowserEngine(object):
         if self._ctx:
             return
         self._pw = sync_playwright().start()
-        # 1) 附加优先：发布器窗口还开着（哪怕上次脚本已退出）就原样接管，
-        #    标签全保留——脚本重启不重复开窗
-        try:
-            self._connect(timeout=8000)
-            self.log("已附加到现有发布器窗口（窗口复用）")
-            return
-        except Exception:
-            pass
-        # 2) 拉起独立 Edge 进程（专用 profile，与用户日常浏览器完全隔离；
+        # 清场后拉起独立 Edge 进程（僵尸窗口不可能存在）（专用 profile，与用户日常浏览器完全隔离；
         #    不经 Playwright 托管：脚本退出窗口仍在，下次启动附加复用）
         self._kill_stale()
         exe = self._find_edge()
