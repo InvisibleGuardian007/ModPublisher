@@ -19,6 +19,7 @@ tests/_packtest/
 tests/_c.js
 tests/ui_*.png
 tests/ui_*.jpg
+tests/shots/
 tests/profile*/
 *.log
 

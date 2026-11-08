@@ -14,13 +14,23 @@
 **界面（单窗口，Edge 渲染，明暗主题）**
 
 - 启动自动恢复登录会话；过期自动进入登录流程（人工输密码/验证码一次，约十天免登录）
-- 作品列表 / 搜索 / 状态标签 / 本地映射标记；点选作品**秒读**全部表单（平台 165 字段）
+- 顶栏 GitHub 图标直达仓库；作品列表 / 搜索 / 状态彩色标签 / 本地映射标记；
+  点选作品**秒读**全部表单（平台 165 字段）
 - **详情介绍编辑器**（PE/PC 共用）：富文本直接编辑，**拖拽 / 粘贴图片自动上传插入**，
-  落点跟随光标——解决官方页图片不能拖、长图排版乱的痛点
-- **图片槽位**：组件 ICON、手机图片位×6、PC 图片位×2，拖拽或点击即上传保存
-- **视频**：拖入 mp4 + 封面图，一键上传保存（H264/AAC 规范同官方要求）
-- **全部字段**（高级折叠区）：平台完整字段可编辑，改动自动标绿
-- 底部自动化条：建议名称 / 生成纪要 / 打包上传+提升版本 / 一键保存 / 提交审核
+  先插本地预览再原位换正式 URL；画布跟随主题，暗色下深色内联文字自动反转为亮色
+- **手机端预览**：编辑器工具栏 📱 一键在手机壳里实时预览网易商店详情页
+  （封面图/ICON/名称/钻石定价/标签/下载按钮/图文详情，与编辑器实时同步）
+- **AI 润色**（✨ AI）：配置任意 OpenAI 兼容接口（DeepSeek / 智谱 / Moonshot / OpenAI），
+  一键润色 PE更新纪要（≤200字）/ PC简介 / 详情文字（≤360字，防静默截断）；
+  Key 仅存本机「发布配置.json」
+- **字数预算计数器**：与平台 Quill 编辑器同口径（404 字 / 10 图），超限即时变红，
+  保存前再拦一道（平台超限是静默截断吞图，不报错）
+- **图片槽位**：组件 ICON、手机图片位×6、PC 图片位×2，拖拽或点击即上传保存（带忙碌动画）
+- **视频**：拖入 mp4 + 封面图，本地即时预览，一键上传保存（H264/AAC 规范同官方要求）
+- **全部字段**（高级折叠区）：平台完整字段可编辑，改动自动标绿，**任意键改动真正落库**
+- 底部自动化条：建议名称 / 生成纪要 / 打包上传+提升版本 / 一键保存（`Ctrl+S`）/ 提交审核；
+  未保存改动带计数徽标，切换作品前拦截确认
+- **运行日志抽屉**（右上 📜）：引擎/Agent API 全部日志实时落格，带未读角标
 - 改动自动标绿（脏值跟踪），没改的字段提交平台原值，绝不静默覆盖
 
 **发布自动化**
@@ -37,6 +47,22 @@
 
 **Agent 接口**（exe 运行时常驻开放）
 
+- MCP（推荐，Agent 即插即用）：`网易模组发布器.exe --mcp`（stdio），
+  客户端配置里加一段即可——发布器未运行时会自动拉起：
+
+```json
+{
+  "mcpServers": {
+    "netease-mod-publisher": {
+      "command": "D:/MCModDve/ModPublisher/dist/网易模组发布器.exe",
+      "args": ["--mcp"]
+    }
+  }
+}
+```
+
+  工具：`list_works / read_item / set_fields / set_pc_detail / add_image /
+  publish / submit_review / open_official`
 - HTTP：`http://127.0.0.1:8765`，`POST /list /read /set /set-pc /add-image /publish /submit`
 - CLI：`网易模组发布器.exe --cmd ...`（自动优先代理到常驻实例的活会话）
 
@@ -94,7 +120,7 @@ py -3 -m PyInstaller --onefile --windowed --name 网易模组发布器 ^
 
 | 文件 | 说明 |
 |---|---|
-| `mod_publisher.py` | 宿主：引擎线程、页面 RPC、Agent HTTP、CLI、发布编排 |
+| `mod_publisher.py` | 宿主：引擎线程、页面 RPC、Agent HTTP/CLI/**MCP**、发布编排 |
 | `ui.html` | 界面（官方结构复刻、主题、脏值跟踪、文档编辑器） |
 | `publish_api.py` | 平台接口（停靠页 fetch 传输 / 直传 / update 构造 / 本地打包） |
 | `publish_core.py` | 浏览器引擎（登录 / 兜底自动化） |
@@ -103,6 +129,8 @@ py -3 -m PyInstaller --onefile --windowed --name 网易模组发布器 ^
 | `tests/do_publish.py` | 趣味附魔发布脚本；`--dry-run` 只读自检详情配方（字数/图数），不带则真实发布 |
 | `tests/probe_detail_state.py` | 只读探针：作品级字段 + 详情段结构/字数，导出 `live_detail_dump.html` |
 | `tests/test_detail_recipe.py` | 离线单测：详情组装配方（历史标题剥离、幂等） |
+| `tests/test_update_body.py` | 离线单测：update body 变更通用应用（全字段/类型适配/new_res 不越权） |
+| `tests/ui_smoke.py` | 离线 UI 冒烟：无头 Edge + 桩 RPC 假数据，覆盖界面全部交互链路 |
 | `tests/gen_detail_images.py` | 详情长图素材生成（附魔介绍瀑布流、更新日志紧凑渲染） |
 
 ## 端点与实现备忘
@@ -110,7 +138,10 @@ py -3 -m PyInstaller --onefile --windowed --name 网易模组发布器 ^
 - API host：`mc-launcher.webapp.163.com`（列表带尾斜杠；detail/update/apply_review 不带）
 - 上传：`filepicker/file_token` 取 token（Policy 内含实际上传地址）→
   `fp.ps.netease.com` multipart 直传 → 响应 JSON + `x-ntes-signature` 头
-- update 请求体 = detail 原样透传 + 字段矫正（mc_version 字符串转数组等）
+- update 请求体 = detail 原样透传 + 字段矫正（mc_version 字符串转数组等）+
+  **changes 通用应用**（字符串脏值按原字段类型适配回 list/dict/bool/int；
+  此前只透传 6 个白名单键，全字段/ICON 槽位等改动会被静默丢弃）
+- 大文件（>32MB，如视频）直传先走 ctx.request，免 base64 整包过 CDP；签名不可读再回页面通道
 - 提升版本 = `res[0].add_version`
 - 详情字数：编辑器按 Quill 长度计（**图片占 1 字**），PE 详情上限≈405-420 字、图片≤10 张；
   超字数静默截断（吞图不报错），超图数报错；富文本白名单 `p/strong/span/br/img`（`<b>` 报非法字符）
