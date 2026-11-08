@@ -53,19 +53,20 @@ def _publisher_edge_pids():
         return []
 
 
-def focus_publisher_window():
-    """把发布器界面调到前台：优先经 CDP 激活 ui.html 标签页（适用于追加在
-    用户自己 Edge 里的形态），失败再找发布器专用窗口。"""
+def focus_publisher_window(prefixes=None):
+    """把发布器界面调到前台：优先经 CDP 激活应用页（--app 本地地址或
+    file:// 兜底），失败再找发布器专用窗口。"""
     try:
         import urllib.request as _u
         with _u.urlopen("http://127.0.0.1:9222/json/version", timeout=2):
             pass
         from playwright.sync_api import sync_playwright
+        prefixes = prefixes or [UI_FILE.as_uri()]
         with sync_playwright() as p:
             b = p.chromium.connect_over_cdp("http://127.0.0.1:9222", timeout=4000)
             for c in b.contexts:
                 for pg in c.pages:
-                    if (pg.url or "").startswith(UI_FILE.as_uri()):
+                    if (pg.url or "").startswith(tuple(prefixes)):
                         try:
                             pg.bring_to_front()
                         except Exception:
@@ -219,7 +220,9 @@ class Host(object):
         main, dock = self._dedupe_pages(ctx)
         self.page = main
         # 主页面先就位：窗口立刻显示发布器界面（不被停靠页加载等待挡在 about:blank）
-        self.page.goto(UI_FILE.as_uri(), wait_until="domcontentloaded")
+        _ui_target = self.cfg.get("app_url") or UI_FILE.as_uri()
+        if not (self.page.url or "").startswith(_ui_target.split("?")[0]):
+            self.page.goto(_ui_target, wait_until="domcontentloaded")
         self._ui_event = lambda kind, pj: self.page.evaluate(
             "([k,j])=>window.__mpEvent&&window.__mpEvent(k,j)", [kind, pj])
         try:
@@ -262,7 +265,9 @@ class Host(object):
                 return False
 
         ui_pages = [pg for pg in ctx.pages
-                    if (pg.url or "").startswith(UI_FILE.as_uri())]
+                    if (pg.url or "").startswith(UI_FILE.as_uri())
+                    or (pg.url or "").startswith(
+                        (self.cfg.get("app_url") or "\u0000").split("?")[0])]
         for pg in ui_pages[1:]:
             try:
                 pg.close()
@@ -274,6 +279,12 @@ class Host(object):
                   and _alive(pg)]
         if ui_pages:
             main = ui_pages[0]
+            # 复用 HTTP 应用页时重载：把页面重新绑定到本会话的 RPC 通道
+            if (main.url or "").startswith("http://127.0.0.1:8765/ui"):
+                try:
+                    main.reload(wait_until="domcontentloaded")
+                except Exception:
+                    pass
         elif blanks:
             main = blanks[0]
         else:
@@ -1688,14 +1699,22 @@ def main():
         except Exception:
             pass
 
-    # 重复实例检测：Agent API 已在线 → 说明发布器已在运行
+    # 重复实例检测：Agent API 已在线 → 说明发布器已在运行（ping 重试防抖）
     try:
-        with _u.urlopen("http://127.0.0.1:8765/ping", timeout=2) as r:
-            if r.status == 200:
-                focus_publisher_window()
-                box("发布器已在运行中，已为你调出发布器标签页。\n\n"
-                    "Agent API: http://127.0.0.1:8765")
-                return
+        alive = False
+        for _ in range(2):
+            try:
+                with _u.urlopen("http://127.0.0.1:8765/ping", timeout=2) as r:
+                    if r.status == 200:
+                        alive = True
+                        break
+            except Exception:
+                time.sleep(0.6)
+        if alive:
+            focus_publisher_window(["http://127.0.0.1:8765/ui", UI_FILE.as_uri()])
+            box("发布器已在运行中，已为你调出发布器窗口。\n\n"
+                "Agent API: http://127.0.0.1:8765")
+            return
     except Exception:
         pass
 
