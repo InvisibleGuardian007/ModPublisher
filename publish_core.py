@@ -19,6 +19,8 @@ else:
 CONFIG_FILE = APP_DIR / "发布配置.json"
 PROFILE_DIR = APP_DIR / "profile"
 EDITOR_URL_RE = re.compile(r"#/pe/edit/\d+")
+# 隐藏 powershell 等子进程的 console 窗口（否则每次启动/打包都闪黑框）
+CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
 DEFAULT_CONFIG = {
     "browser_channel": "msedge",
@@ -146,7 +148,8 @@ def pack(mod):
         before = set(pdir.glob(zg))
         cmd = ["powershell", "-ExecutionPolicy", "Bypass", "-File",
                str(pdir / "pack.ps1")] + (mod.get("pack_args") or ["-KeepOld"])
-        r = subprocess.run(cmd, cwd=str(pdir), capture_output=True, text=True)
+        r = subprocess.run(cmd, cwd=str(pdir), capture_output=True, text=True,
+                           creationflags=CREATE_NO_WINDOW)
         if r.returncode != 0:
             raise RuntimeError("打包失败:\n%s%s" % (r.stdout or "", r.stderr or ""))
         time.sleep(1)
@@ -201,7 +204,8 @@ class BrowserEngine(object):
                  "$_.CommandLine -notlike '*remote-debugging-port*' } | "
                  "ForEach-Object { Stop-Process -Id $_.ProcessId -Force "
                  "-ErrorAction SilentlyContinue }" % APP_DIR.name],
-                capture_output=True, timeout=20)
+                capture_output=True, timeout=20,
+                creationflags=CREATE_NO_WINDOW)
         except Exception:
             pass
 
@@ -262,7 +266,7 @@ class BrowserEngine(object):
             args.append("--headless=new")
         args.append("about:blank")
         self._popped = True
-        subprocess.Popen(args)
+        subprocess.Popen(args, creationflags=CREATE_NO_WINDOW)
         if not self._cdp_alive(30):
             raise RuntimeError("Edge 启动超时（9222 未就绪）")
         self._connect()
@@ -281,7 +285,8 @@ class BrowserEngine(object):
                      "Where-Object { $_.CommandLine -like '*%s*profile*' } | "
                      "ForEach-Object { Stop-Process -Id $_.ProcessId -Force "
                      "-ErrorAction SilentlyContinue }" % APP_DIR.name],
-                    capture_output=True, timeout=20)
+                    capture_output=True, timeout=20,
+                    creationflags=CREATE_NO_WINDOW)
             except Exception:
                 pass
         try:
@@ -427,7 +432,7 @@ class BrowserEngine(object):
         if btn.count() != 1:
             btn = row.get_by_role("button", name="编辑")
         if btn.count() != 1:
-            raise RuntimeError("「%s」行里找不到 更新/编辑 按钮，请到平台人工检查状态" % match_text)
+            raise RuntimeError("「%s」行里找不到 更新/编辑 按钮，请到平台人工检查状态" % key)
         btn.first.click()
         self.page.wait_for_url(EDITOR_URL_RE, timeout=20000)
         self.page.wait_for_timeout(2500)
