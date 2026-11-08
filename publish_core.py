@@ -233,15 +233,19 @@ class BrowserEngine(object):
                 creationflags=CREATE_NO_WINDOW)
         except Exception:
             pass
-        # 清会话恢复数据：否则启动会复原上次被杀时打开的标签页（平台页等）
+        # 清会话恢复数据：否则启动会复原上次被杀时打开的标签页（平台页等）。
+        # Chromium 会话在 Default/Sessions，Edge 专属恢复日志在
+        # Default/EdgeSessions（SessionRestoreLog）；exit_type=Crashed 会
+        # 触发崩溃恢复，一并复位。
         try:
-            d = PROFILE_DIR / "Default" / "Sessions"
-            if d.is_dir():
-                for f in d.iterdir():
-                    try:
-                        f.unlink()
-                    except Exception:
-                        pass
+            for d_name in ("Sessions", "EdgeSessions"):
+                d = PROFILE_DIR / "Default" / d_name
+                if d.is_dir():
+                    for f in d.iterdir():
+                        try:
+                            f.unlink()
+                        except Exception:
+                            pass
             for name in ("Current Session", "Current Tabs",
                          "Last Session", "Last Tabs"):
                 f = PROFILE_DIR / "Default" / name
@@ -250,6 +254,14 @@ class BrowserEngine(object):
                         f.unlink()
                     except Exception:
                         pass
+            prefs = PROFILE_DIR / "Default" / "Preferences"
+            if prefs.exists():
+                j = json.loads(prefs.read_text(encoding="utf-8-sig"))
+                prof = j.setdefault("profile", {})
+                if prof.get("exit_type") not in (None, "Normal"):
+                    prof["exit_type"] = "Normal"
+                    prefs.write_text(json.dumps(j, ensure_ascii=False),
+                                     encoding="utf-8")
         except Exception:
             pass
 

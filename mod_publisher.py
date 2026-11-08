@@ -217,7 +217,7 @@ class Host(object):
         ctx = self.eng._ctx
         # 绑定与注入都放到 context 级：随页面导航持续生效
         ctx.expose_binding("__pyRequest", self._on_request)
-        main, dock = self._dedupe_pages(ctx)
+        main, _dock = self._dedupe_pages(ctx)
         self.page = main
         # 主页面先就位：窗口立刻显示发布器界面（不被停靠页加载等待挡在 about:blank）
         _ui_target = self.cfg.get("app_url") or UI_FILE.as_uri()
@@ -229,16 +229,9 @@ class Host(object):
             self.page.bring_to_front()
         except Exception:
             pass
-        # 停靠页：常驻平台域，API 全部经它 fetch（浏览器原生管理轮换cookie）
-        if dock is None:
-            dock = ctx.new_page()
-            try:
-                dock.goto("https://mcdev.webapp.163.com/",
-                          wait_until="domcontentloaded", timeout=30000)
-                dock.wait_for_timeout(3500)
-            except Exception:
-                pass
-        self.api_page = None   # 传输走 ctx.request，不再需要可见停靠页
+        # API 传输走 ctx.request（与浏览器共享 Cookie 罐），无需任何停靠页；
+        # 平台网页只在用户显式操作时打开
+        self.api_page = None
         self.api.set_context(ctx)
         try:
             self.page.bring_to_front()
