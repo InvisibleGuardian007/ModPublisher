@@ -199,11 +199,36 @@ class Host(object):
         return val
 
     # ---------- 引擎 ----------
+    def _heal_dock(self):
+        """停靠页（API 传输通道）被用户关闭时自动重建并最小化。"""
+        try:
+            if self.api_page is not None and not self.api_page.is_closed():
+                return
+        except Exception:
+            pass
+        try:
+            ctx = self.eng._ctx
+            dock = ctx.new_page()
+            dock.goto("https://mcdev.webapp.163.com/",
+                      wait_until="domcontentloaded", timeout=30000)
+            dock.wait_for_timeout(3000)
+            self.api_page = dock
+            self.api.set_context(ctx, page=dock)
+            self.eng._minimize(dock)
+            try:
+                self.page.bring_to_front()
+            except Exception:
+                pass
+            self.js_log("[API] 传输通道已自动恢复（最小化在任务栏，请勿关闭它）")
+        except Exception:
+            pass
+
     def ensure(self):
         """确保引擎与浏览器可用；窗口被关/崩溃后自动重开（配合 --reside 常驻）。"""
         if self.eng and self.eng._ctx is not None:
             try:
                 if not self.eng._ctx.is_closed():
+                    self._heal_dock()
                     return self.eng
             except Exception:
                 pass
@@ -240,6 +265,7 @@ class Host(object):
                 pass
         self.api_page = dock
         self.api.set_context(ctx, page=self.api_page)
+        self.eng._minimize(dock)   # 停靠窗口最小化：用户只见应用窗口
         try:   # 停靠页窗口化后会抢焦点：把主窗口重新带到前台
             self.page.bring_to_front()
         except Exception:
@@ -410,10 +436,9 @@ class Host(object):
             try:
                 d = self.api.detail(rid)
             except Exception as e:
-                # 停靠页偶发未就绪：重载后再试一次，仍失败才走浏览器兜底
+                # 自愈：停靠页被关则自动重建最小化，再试一次；仍失败才走副页兜底
                 try:
-                    self.api_page.reload(wait_until="domcontentloaded")
-                    self.api_page.wait_for_timeout(2500)
+                    self.ensure()
                     d = self.api.detail(rid)
                 except Exception as e2:
                     self.js_log("[API] 详情读取失败转浏览器: %s / 重试: %s"

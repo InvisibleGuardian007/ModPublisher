@@ -186,11 +186,23 @@ class BrowserEngine(object):
         """平台自动化专用页面：新建/复用隐藏副页，主应用窗口永不被导航。"""
         if self._work is None or self._work.is_closed():
             self._work = self._ctx.new_page()
+            self._minimize(self._work)
             try:   # 副页会抢焦点：把主应用窗口带回前台
                 self.page.bring_to_front()
             except Exception:
                 pass
         return self._work
+
+    def _minimize(self, page):
+        """CDP 把窗口最小化：停靠页/自动化副页对用户不可见（收进任务栏）。"""
+        try:
+            sess = page.context.new_cdp_session(page)
+            w = sess.send("Browser.getWindowForTarget")
+            sess.send("Browser.setWindowBounds", {
+                "windowId": w["windowId"],
+                "bounds": {"windowState": "minimized"}})
+        except Exception:
+            pass
 
 
     @property
