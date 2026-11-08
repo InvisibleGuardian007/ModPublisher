@@ -18,24 +18,25 @@ AppUpdatesURL={#MyAppURL}/releases/latest
 DefaultDirName={localappdata}\Programs\ModPublisher
 PrivilegesRequired=lowest
 DefaultGroupName={#MyAppName}
-SetupIconFile=docs\icon.ico
+SetupIconFile=..\docs\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
-OutputDir=dist
+OutputDir=..\dist
 OutputBaseFilename=ModPublisher-{#MyAppVersion}-setup
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+ShowLanguageDialog=no
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式(&D)"; GroupDescription: "附加任务："; Flags: checkedonce
 
 [Files]
-Source: "dist\网易模组发布器.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "docs\icon.png"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\网易模组发布器.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\docs\icon.png"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

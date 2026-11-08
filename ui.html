@@ -452,6 +452,26 @@ body.doc-full #docCard>div:last-child{flex-shrink:0}
 body::before{z-index:0}
 #loginGate::before{content:"";position:absolute;inset:0;
   background:radial-gradient(640px 320px at 50% 20%,var(--glow1),transparent 70%)}
+/* MC 像素网格底纹 */
+#loginGate::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent 0 31px,
+    color-mix(in srgb,var(--muted) 9%,transparent) 31px 32px),
+  repeating-linear-gradient(90deg,transparent 0 31px,
+    color-mix(in srgb,var(--muted) 9%,transparent) 31px 32px)}
+/* 漂浮的 MC 方块/道具 */
+#loginGate .px-deco{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+#loginGate .px{position:absolute;user-select:none;
+  animation:floaty 6s ease-in-out infinite}
+#loginGate .px.p1{left:7%;top:15%;font-size:66px;opacity:.17}
+#loginGate .px.p2{left:16%;top:64%;font-size:46px;opacity:.15;animation-delay:-2s}
+#loginGate .px.p3{right:11%;top:18%;font-size:60px;opacity:.19;animation-delay:-1s;
+  animation-duration:7s}
+#loginGate .px.p4{right:19%;top:68%;font-size:44px;opacity:.15;animation-delay:-3s}
+#loginGate .px.p5{left:27%;top:82%;font-size:42px;opacity:.13;animation-delay:-1.5s}
+#loginGate .px.p6{right:31%;top:9%;font-size:38px;opacity:.13;animation-delay:-2.5s}
+#loginGate .px.p7{left:42%;top:7%;font-size:34px;opacity:.11;animation-delay:-4s}
+#loginGate .px.p8{right:5%;top:46%;font-size:50px;opacity:.13;animation-delay:-.5s;
+  animation-duration:5s}
 #loginGate .lg-box{position:relative;text-align:center;max-width:430px;padding:26px;
   animation:pop .25s ease}
 #loginGate .lg-logo{width:82px;height:82px;margin:0 auto 16px;border-radius:22px;
@@ -795,7 +815,12 @@ body::before{z-index:0}
     <div class="ai-tip">生图模型在「⚙ 设置」中配置；API 地址 / Key 可留空跟随 AI 配置。</div>
   </div>
 </div>
-<div id="loginGate"><div class="lg-box">
+<div id="loginGate"><div class="px-deco">
+  <span class="px p1">🟩</span><span class="px p2">⛏️</span>
+  <span class="px p3">💎</span><span class="px p4">🌱</span>
+  <span class="px p5">🧱</span><span class="px p6">🔥</span>
+  <span class="px p7">🪵</span><span class="px p8">🟫</span>
+</div><div class="lg-box">
   <div class="lg-logo">🎮</div>
   <h1>网易模组发布器</h1>
   <div class="lg-sub">MOD PUBLISHER · v<span class="lg-ver">—</span></div>
