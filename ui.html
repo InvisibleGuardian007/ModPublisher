@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>网易模组发布器</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%AE%3C/text%3E%3C/svg%3E">
 <style>
@@ -269,6 +270,7 @@ details summary:hover{color:var(--accent)}
 /* ============ 底部自动化条 ============ */
 #bar{position:fixed;left:0;right:0;bottom:0;z-index:100;display:flex;
   align-items:center;gap:9px;padding:11px 18px;
+  padding-bottom:max(11px,env(safe-area-inset-bottom));
   background:color-mix(in srgb,var(--card) 86%,transparent);
   backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
   border-top:1px solid var(--line);
@@ -426,6 +428,28 @@ details summary:hover{color:var(--accent)}
   padding-top:10px;margin-top:14px;flex-wrap:wrap}
 #genModal .ai-tip{font-size:11px;color:var(--muted);line-height:1.7;margin-top:11px}
 #genSlotList{display:none;flex-wrap:wrap;gap:6px;margin-top:9px}
+/* ============ 登录门（专属 exe 启动流：先登录后进入） ============ */
+#loginGate{position:fixed;inset:0;z-index:500;background:var(--bg);display:none;
+  align-items:center;justify-content:center}
+body::before{z-index:0}
+#loginGate::before{content:"";position:absolute;inset:0;
+  background:radial-gradient(640px 320px at 50% 20%,var(--glow1),transparent 70%)}
+#loginGate .lg-box{position:relative;text-align:center;max-width:430px;padding:26px;
+  animation:pop .25s ease}
+#loginGate .lg-logo{width:82px;height:82px;margin:0 auto 16px;border-radius:22px;
+  color:#fff;font-size:40px;background:linear-gradient(135deg,#3a7afe,#7aa2ff);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 12px 34px rgba(58,122,254,.45);animation:floaty 3.2s ease-in-out infinite}
+#loginGate h1{font-size:20px;letter-spacing:1px;margin-bottom:6px}
+#loginGate .lg-sub{font-size:12px;color:var(--muted);margin-bottom:18px}
+#loginGate .lg-msg{font-size:13px;color:var(--muted);margin-bottom:16px;min-height:20px}
+#loginGate .lg-msg.err{color:var(--warn);font-weight:600}
+#loginGate .lg-tip{font-size:11px;color:var(--muted);line-height:1.8;margin-top:16px}
+#loginGate button{padding:10px 26px;font-size:14px}
+/* 设置-应用区 */
+.about-row{display:flex;align-items:center;gap:8px;font-size:12.5px;
+  color:var(--muted);margin-top:8px;line-height:1.6;flex-wrap:wrap}
+.about-row .mono{font-family:var(--mono);color:var(--fg);word-break:break-all}
 /* ============ 响应式自适应 ============ */
 #btnNav{display:none}
 @media (max-width:1200px){
@@ -680,6 +704,18 @@ details summary:hover{color:var(--accent)}
       <input type="text" id="aiImgModel" placeholder="dall-e-3 / cogview-3-flash / …"></div>
     <div class="ai-tip">Key 只保存在本机「发布配置.json」（已 gitignore，不会入库）。
       润色/生图由本机直接调用你配置的接口，不经过任何第三方服务器。</div>
+    <div class="airow" style="margin-top:14px;padding-top:11px;
+      border-top:1px solid var(--line)">
+      <label style="color:var(--fg);font-weight:600">应用</label>
+      <div class="about-row">版本 <b id="aboutVer">—</b>
+        <button class="ghost" id="btnCheckUpd" style="padding:3px 12px;font-size:12px">检查更新</button>
+        <span id="updTip" class="doctip"></span></div>
+      <div class="about-row">手机端（同一局域网）：<span class="mono" id="webUrl">—</span></div>
+      <div class="about-row"><a href="https://github.com/InvisibleGuardian007/ModPublisher"
+        target="_blank" rel="noopener" style="color:var(--accent)">GitHub 仓库 / 给个 Star ⭐</a></div>
+      <div class="ai-tip">本工具仅操作开发者本人账号下的作品；提审等不可逆动作均需人工确认。
+        界面为自制实现，与网易官方无关。</div>
+    </div>
     <div class="mf">
       <span style="flex:1"></span>
       <button class="ghost" id="aiTest">测试连接</button>
@@ -717,6 +753,15 @@ details summary:hover{color:var(--accent)}
     <div class="ai-tip">生图模型在「⚙ 设置」中配置；API 地址 / Key 可留空跟随 AI 配置。</div>
   </div>
 </div>
+<div id="loginGate"><div class="lg-box">
+  <div class="lg-logo">🎮</div>
+  <h1>网易模组发布器</h1>
+  <div class="lg-sub">MOD PUBLISHER · v<span class="lg-ver">—</span></div>
+  <div class="lg-msg" id="lgMsg">检测登录态中…</div>
+  <button class="pri" id="lgGo" style="display:none">登录网易开发者平台</button>
+  <div class="lg-tip">登录由网易官方页面完成，本工具不接触你的密码。<br>
+    建议勾选「十天免登录」，之后启动自动恢复会话。</div>
+</div></div>
 <div id="prog"><div class="box">
   <div class="t"><span id="progT">打包中…</span><span class="p" id="progP"></span></div>
   <div class="track"><div class="fill" id="progF"></div></div>
@@ -772,11 +817,18 @@ window.__pyCalls={};window.__pySeq=0;
 window.__pyResolve=(id,json)=>{const f=window.__pyCalls[id];
   if(f){delete window.__pyCalls[id];f(JSON.parse(json))}};
 async function py(action,payload){
-  const id=++window.__pySeq;
-  return new Promise((res,rej)=>{
-    window.__pyCalls[id]=v=>v.ok?res(v.data):rej(new Error(v.error||"失败"));
-    window.__pyRequest(action,JSON.stringify(payload||{}),id)});
-}
+  // 专属窗口：Playwright 绑定直连；手机端/浏览器：回退 HTTP RPC 桥
+  if(window.__pyRequest){
+    const id=++window.__pySeq;
+    return new Promise((res,rej)=>{
+      window.__pyCalls[id]=v=>v.ok?res(v.data):rej(new Error(v.error||"失败"));
+      window.__pyRequest(action,JSON.stringify(payload||{}),id)})}
+  const r=await fetch("rpc",{method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({action,payload:payload||{}})});
+  const j=await r.json();
+  if(j.ok)return j.data;
+  throw new Error(j.error||"请求失败")}
 function log(m,e){const el=$("msg");el.textContent=m;
   el.className="msg"+(e?" err":"");clearTimeout(el._t);
   el._t=setTimeout(()=>el.textContent="",7000);
@@ -872,6 +924,26 @@ function openAI(){
     $("aiModal").style.display="flex"}).catch(e=>log(e.message,1))}
 $("btnAI").onclick=openAI;
 $("aiX").onclick=()=>{$("aiModal").style.display="none"};
+/* 版本/手机端地址：启动即回填（登录门角标、设置-应用区） */
+py("app_info",{}).then(r=>{
+  $("aboutVer").textContent="v"+r.version;
+  document.querySelectorAll(".lg-ver").forEach(e=>e.textContent=r.version);
+  if(r.phone){$("webUrl").textContent=r.phone;
+    $("webUrl").style.color="var(--fg)"}}).catch(()=>{});
+$("btnCheckUpd").onclick=async()=>{
+  const b=$("btnCheckUpd"),t=$("updTip");
+  b.disabled=true;t.textContent="检查中…";
+  try{
+    const r=await py("check_update",{});
+    t.textContent=r.has_update
+      ?("有新版本 "+r.latest+"！点击此条前往下载")
+      :("已是最新（最新 "+r.latest+"）");
+    t.style.color=r.has_update?"var(--warn)":"var(--muted)";
+    t.style.cursor=r.has_update?"pointer":"";
+    t.onclick=r.has_update?()=>window.open(r.url,"_blank"):null;
+    log(r.has_update?("发现新版本 "+r.latest+" ✓"):"已是最新版本")}
+  catch(e){t.textContent="检查失败："+e.message}
+  b.disabled=false};
 $("aiModal").addEventListener("mousedown",e=>{
   if(e.target.id==="aiModal")$("aiModal").style.display="none"});
 $("aiSave").onclick=async()=>{
@@ -1230,8 +1302,18 @@ function caretTo(x,y){
 }
 /* ---------- 动作 ---------- */
 async function refreshAll(){
+  const gate=$("loginGate");
   try{
     const d=await py("boot",{});
+    // 登录门：未登录（含手机端首次打开）先见品牌登录页
+    if(!d.profile){
+      gate.style.display="flex";
+      $("lgMsg").className="lg-msg";
+      $("lgMsg").textContent="检测到未登录，登录后自动进入";
+      $("lgGo").style.display="";
+      $("lgGo").disabled=false;
+      return}
+    gate.style.display="none";
     state.profile=d.profile;state.rows=d.rows;state.local=d.local;
     $("nick").textContent=(d.profile&&d.profile.nickname)||"未登录";
     $("stTxt").textContent=d.profile?"已登录":"未登录";
@@ -1247,15 +1329,32 @@ async function refreshAll(){
     renderList();renderInfo();
     // 当前选中作品的表单一并重读（强制：刷新语义=全量重载）
     if(state.sel)await selectItem(state.sel,true);
-  }catch(e){log("刷新失败："+e.message,1)}
+  }catch(e){
+    // 启动失败（含手机端 token 失效/网络问题）：登录门显示原因
+    const gate=$("loginGate");
+    gate.style.display="flex";
+    $("lgMsg").className="lg-msg err";
+    $("lgMsg").textContent="启动失败："+e.message;
+    $("lgGo").style.display="";
+    $("lgGo").disabled=false;
+    log("刷新失败："+e.message,1)}
 }
 $("btnRefresh").onclick=refreshAll;
 $("kw").oninput=renderList;
-$("btnLogin").onclick=async()=>{
+$("lgGo").onclick=$("btnLogin").onclick=async()=>{
+  const btns=[$("btnLogin"),$("lgGo")];
+  btns.forEach(b=>b&&(b.disabled=true));
+  $("lgMsg").className="lg-msg";
+  $("lgMsg").textContent="正在打开登录页，请在弹出的网易页面完成登录…";
   log("正在打开登录页…");
   try{const r=await py("login",{});
-    if(r.ok){await refreshAll()}else log("登录超时",1)}
-  catch(e){log(e.message,1)}};
+    if(r.ok){await refreshAll();log("登录成功 ✓")}
+    else{$("lgMsg").className="lg-msg err";
+      $("lgMsg").textContent="登录超时，请重试";
+      log("登录超时",1)}}
+  catch(e){$("lgMsg").className="lg-msg err";
+    $("lgMsg").textContent="登录失败："+e.message;log(e.message,1)}
+  btns.forEach(b=>b&&(b.disabled=false))};
 function fillName(){const L=state.local[state.sel];
   if(L&&L.name_suggest){$("fName").value=L.name_suggest;
     $("fName").classList.add("dirty");state.dirty.item_name=L.name_suggest;
@@ -1576,6 +1675,18 @@ window.__mpEvent=(k,j)=>{
     $("progM").textContent=d.msg}};
 /* ---------- 启动 ---------- */
 updateCnt();updateWelcome();
+/* 手机端 HTTP 模式：无 Playwright 绑定时订阅事件流（日志/打包进度） */
+if(!window.__pyRequest&&window.EventSource){
+  try{
+    const es=new EventSource("events"+location.search);
+    es.onmessage=e=>{try{
+      const m=JSON.parse(e.data);
+      if(m.kind==="pack_progress")window.__mpEvent("pack_progress",
+        JSON.stringify(m.payload));
+      else if(m.kind==="log"&&window.__mpLog)window.__mpLog(m.payload);
+    }catch(_){}};
+  }catch(_){}
+}
 (async()=>{await refreshAll()})();
 </script>
 </body>

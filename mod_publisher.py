@@ -17,6 +17,9 @@ from pathlib import Path
 import publish_api as PA
 import publish_core as core
 
+APP_VERSION = "26.11.9"
+REPO_URL = "https://github.com/InvisibleGuardian007/ModPublisher"
+
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
 except Exception:
@@ -115,6 +118,10 @@ class Host(object):
         self._closed = threading.Event()
         self.exit_on_close = True   # --reside 常驻模式置 False：关窗不退出，自动重开
         self._start_err = None
+        self._sse = []              # 手机端 SSE 订阅队列（日志/进度推送）
+        self.web_token = None
+        self.http_port = 8765
+        self.lan_ip = "127.0.0.1"
 
     # ---------- 引擎线程 ----------
     def start(self, timeout=90):
@@ -155,12 +162,24 @@ class Host(object):
                 ev.set()
 
     def ui_event(self, kind, payload):
-        """引擎线程 → UI 页面推送（进度等）。"""
+        """引擎线程 → UI 页面推送（进度等）；同时推给手机端 SSE 订阅者。"""
+        self._sse_push({"kind": kind, "payload": payload})
         if self._ui_event:
             try:
                 self._ui_event(kind, json.dumps(payload, ensure_ascii=False))
             except Exception:
                 pass
+
+    def _sse_push(self, obj):
+        for q in list(self._sse):
+            try:
+                q.put_nowait(obj)
+            except Exception:
+                pass
+
+    def web_url(self):
+        return "http://%s:%d/ui?token=%s" % (
+            self.lan_ip, self.http_port, self.web_token)
 
     def on_engine_thread(self):
         return self._tid == threading.get_ident()
@@ -290,6 +309,7 @@ class Host(object):
             pass
 
     def js_log(self, msg):
+        self._sse_push({"kind": "log", "payload": msg})
         def push():
             try:
                 # 界面日志抽屉（__mpLog）；无抽屉的旧页面回退 #log 节点
@@ -865,6 +885,25 @@ class Host(object):
         page.goto("https://mcdev.webapp.163.com/#/pe/edit/%s" % rid)
         return {"ok": True}
 
+    # ---------- 应用信息 / 检查更新 / 登录门支撑 ----------
+    def rpc_app_info(self, _p):
+        return {"version": APP_VERSION, "repo": REPO_URL,
+                "phone": self.web_url() if self.web_token else None,
+                "lan_only": bool(self.cfg.get("web_lan", True))}
+
+    def rpc_check_update(self, _p):
+        import requests as _rq
+        r = _rq.get(
+            "https://api.github.com/repos/InvisibleGuardian007/ModPublisher"
+            "/releases/latest", timeout=(10, 30))
+        tag = ((r.json() or {}).get("tag_name") or "") if r.status_code == 200 else ""
+        def _vn(t):
+            return [int(x) for x in re.findall(r"\d+", t)[:3]] or [0]
+        has = bool(tag) and _vn(tag) > _vn(APP_VERSION)
+        return {"current": APP_VERSION, "latest": tag or "(未知)",
+                "has_update": has,
+                "url": REPO_URL + "/releases/latest"}
+
     # ---------- 高层操作（CLI / HTTP API 共用，均在引擎线程执行） ----------
     def h_set(self, name, changes):
         rid = self._rid(name)
@@ -936,11 +975,28 @@ class Host(object):
         rid = self._rid(name)
         return self.submit(lambda: self.api.apply_review(rid, note))
 
-    # ---------- 本地 Agent HTTP API ----------
+    # ---------- 本地 Agent HTTP API + 手机端 Web ----------
     def serve_http(self, port=8765):
         import http.server
         import socketserver
+        import queue as _q
+        import urllib.parse as _up
+        import uuid as _uuid
         host = self
+        host.web_token = _uuid.uuid4().hex[:8]
+        host.http_port = port
+        try:
+            import socket as _s
+            _s0 = _s.socket(_s.AF_INET, _s.SOCK_DGRAM)
+            _s0.connect(("8.8.8.8", 80))
+            host.lan_ip = _s0.getsockname()[0]
+            _s0.close()
+        except Exception:
+            pass
+
+        def _tok_ok(qs, headers):
+            t = _up.parse_qs(qs).get("token", [""])[0]
+            return t == host.web_token or headers.get("X-Token") == host.web_token
 
         class H(http.server.BaseHTTPRequestHandler):
             def _send(self, obj, code=200):
@@ -951,17 +1007,94 @@ class Host(object):
                 self.end_headers()
                 self.wfile.write(b)
 
+            def _loopback_only(self):
+                return self.client_address[0] in ("127.0.0.1", "::1")
+
             def do_GET(self):
+                u = _up.urlparse(self.path)
+                if u.path == "/ui":
+                    # 手机端入口：token 防护（同机打开无 token 也放行）
+                    if not (_tok_ok(u.query, self.headers)
+                            or self._loopback_only()):
+                        b = ("<meta charset=utf-8><body style='font-family:sans-serif;"
+                             "background:#12141a;color:#e8ebf4;display:flex;"
+                             "align-items:center;justify-content:center;height:96vh'>"
+                             "<p>token 无效：请从发布器「⚙ 设置」复制完整手机端链接"
+                             "</p></body>").encode("utf-8")
+                        self.send_response(401)
+                        self.send_header("Content-Type", "text/html; charset=utf-8")
+                        self.send_header("Content-Length", str(len(b)))
+                        self.end_headers()
+                        self.wfile.write(b)
+                        return
+                    try:
+                        b = UI_FILE.read_bytes()
+                    except Exception:
+                        b = "ui.html 缺失".encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Content-Length", str(len(b)))
+                    self.end_headers()
+                    self.wfile.write(b)
+                    return
+                if u.path == "/events":
+                    if not (_tok_ok(u.query, self.headers)
+                            or self._loopback_only()):
+                        return self._send({"ok": False, "error": "token 无效"}, 401)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                    self.send_header("Cache-Control", "no-cache")
+                    self.end_headers()
+                    q = _q.Queue()
+                    host._sse.append(q)
+                    try:
+                        while True:
+                            try:
+                                m = q.get(timeout=15)
+                            except Exception:
+                                m = None
+                            if m is not None:
+                                self.wfile.write(("data: " + json.dumps(
+                                    m, ensure_ascii=False) + "\n\n")
+                                    .encode("utf-8"))
+                            else:
+                                self.wfile.write(b": ping\n\n")
+                            self.wfile.flush()
+                    except Exception:
+                        pass
+                    finally:
+                        try:
+                            host._sse.remove(q)
+                        except Exception:
+                            pass
+                    return
                 if self.path == "/ping":
-                    self._send({"ok": True, "app": "网易模组发布器"})
+                    self._send({"ok": True, "app": "网易模组发布器",
+                                "version": APP_VERSION})
                 else:
                     self._send({"ok": False, "error": "未知GET " + self.path}, 404)
 
             def do_POST(self):
                 try:
+                    u = _up.urlparse(self.path)
                     ln = int(self.headers.get("Content-Length") or 0)
                     payload = json.loads(self.rfile.read(ln) or b"{}")
-                    cmd = self.path.strip("/")
+                    cmd = u.path.strip("/")
+                    if cmd == "rpc":   # 手机端通用 RPC 桥（token 防护）
+                        if not _tok_ok(u.query, self.headers):
+                            return self._send({"ok": False, "error": "token 无效"},
+                                              401)
+                        action = str(payload.get("action") or "")
+                        fn = getattr(host, "rpc_" + action, None)
+                        if not callable(fn) or action.startswith("_"):
+                            return self._send({"ok": False,
+                                               "error": "未知RPC " + action}, 404)
+                        out = host.submit(
+                            lambda: fn(payload.get("payload") or {}), timeout=900)
+                        return self._send({"ok": True, "data": out})
+                    if not self._loopback_only():
+                        return self._send({"ok": False, "error": "仅限本机调用"},
+                                          403)
                     # 自愈：浏览器窗口没了就先重开（引擎存活时是廉价检查）
                     host.submit(lambda: host.ensure(), timeout=120)
 
@@ -1015,8 +1148,11 @@ class Host(object):
             allow_reuse_address = True
             daemon_threads = True
 
-        srv = S(("127.0.0.1", port), H)
+        bind_ip = "0.0.0.0" if host.cfg.get("web_lan", True) else "127.0.0.1"
+        srv = S((bind_ip, port), H)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
+        if bind_ip == "0.0.0.0":
+            host.js_log("[手机端] 同一局域网手机浏览器打开：%s" % host.web_url())
         return port
 
     # ---------- 工具 ----------
@@ -1163,7 +1299,7 @@ def run_mcp():
                         "protocolVersion", "2024-11-05"),
                     "capabilities": {"tools": {}},
                     "serverInfo": {"name": "netease-mod-publisher",
-                                   "version": "26.11.8"}}})
+                                   "version": APP_VERSION}}})
             elif method == "ping":
                 send({"jsonrpc": "2.0", "id": rid, "result": {}})
             elif method == "tools/list":

@@ -75,6 +75,11 @@ STUB = """(()=>{window.__pyRequest=(action,payloadJson,id)=>{
     +"AAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==",mime:"image/png"};
   else if(action==="slot_save"||action==="pc_slot_save")data={url:"https://x/slot.png"};
   else if(action==="cfg_get")data={mods:[{id:"A"},{id:"B"},{id:"C"}]};
+  else if(action==="app_info")data={version:"26.11.9",
+    repo:"https://github.com/InvisibleGuardian007/ModPublisher",
+    phone:"http://192.168.1.5:8765/ui?token=abc123"};
+  else if(action==="check_update")data={current:"26.11.9",latest:"26.11.9",
+    has_update:false,url:"https://github.com/InvisibleGuardian007/ModPublisher/releases/latest"};
   else if(action==="cfg_save")data={local:{}};
   else data={ok:true};
   setTimeout(()=>window.__pyResolve(id,JSON.stringify({ok:true,data:data})),10);}})()
@@ -221,6 +226,12 @@ def main():
         check("AI配置回填", pg.input_value("#aiModel") == "m1"
               and pg.input_value("#aiBase") == "https://api.test/v1")
         check("生图配置回填", pg.input_value("#aiImgModel") == "img1")
+        check("版本显示", pg.text_content("#aboutVer") == "v26.11.9")
+        check("手机端地址回填", "token=abc123" in pg.text_content("#webUrl"))
+        pg.click("#btnCheckUpd")
+        pg.wait_for_timeout(200)
+        check("检查更新", "已是最新" in pg.text_content("#updTip"),
+              pg.text_content("#updTip"))
         pg.click("#aiX")
         check("AI弹窗关闭", pg.get_attribute("#aiModal", "style").find("none") >= 0)
         pg.click("#btnNoteAi")
@@ -410,6 +421,19 @@ def main():
         pg.set_viewport_size({"width": 1366, "height": 950})
         pg.wait_for_timeout(300)
         check("宽窗汉堡隐藏", not pg.locator("#btnNav").is_visible())
+
+        # 15) 登录门：未登录桩（第二页面）→ 品牌登录页；登录后进入
+        stub2 = STUB.replace('profile:{nickname:"测试者",avatar:null}',
+                             'profile:null')
+        pg2 = b.new_page()
+        pg2.add_init_script(stub2)
+        pg2.goto(UI.as_uri())
+        pg2.wait_for_timeout(500)
+        check("登录门显示", pg2.locator("#loginGate").is_visible())
+        check("登录门文案", "未登录" in pg2.text_content("#lgMsg"))
+        check("登录按钮出现", pg2.locator("#lgGo").is_visible())
+        check("版本角标", "26.11.9" in pg2.text_content(".lg-ver"))
+        pg2.close()
 
         check("无JS错误", not errors, errors[:3])
         b.close()
