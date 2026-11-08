@@ -840,11 +840,55 @@ body::before{z-index:0}
   </div>
 </div>
 <div id="loginGate"><div class="px-deco">
+  <svg id="mcScene" viewBox="0 0 1280 800" preserveAspectRatio="xMidYMax slice"
+    shape-rendering="crispEdges" aria-hidden="true">
+    <defs>
+      <pattern id="dirtP" width="16" height="16" patternUnits="userSpaceOnUse">
+        <rect width="16" height="16" fill="#7A5230"/>
+        <rect x="1" y="2" width="5" height="5" fill="#8B6239"/>
+        <rect x="9" y="6" width="5" height="5" fill="#5E3D22"/>
+        <rect x="4" y="11" width="5" height="4" fill="#946A4A"/>
+        <rect x="11" y="1" width="4" height="4" fill="#6B4526"/>
+      </pattern>
+      <pattern id="grassP" width="16" height="16" patternUnits="userSpaceOnUse">
+        <rect width="16" height="16" fill="#7CBD51"/>
+        <rect x="1" y="1" width="5" height="5" fill="#8FD15E"/>
+        <rect x="9" y="9" width="5" height="5" fill="#6BA844"/>
+        <rect x="11" y="2" width="4" height="4" fill="#6BA844"/>
+      </pattern>
+      <pattern id="leafP" width="16" height="16" patternUnits="userSpaceOnUse">
+        <rect width="16" height="16" fill="#3E7C33"/>
+        <rect x="2" y="2" width="5" height="5" fill="#4E9440"/>
+        <rect x="9" y="8" width="5" height="5" fill="#356B2B"/>
+      </pattern>
+    </defs>
+    <g opacity=".55">
+      <g fill="#FFFFFF"><rect x="140" y="70" width="150" height="26"/><rect x="170" y="48" width="90" height="26"/>
+        <rect x="760" y="110" width="180" height="26"/><rect x="800" y="86" width="100" height="26"/>
+        <rect x="1040" y="52" width="130" height="24"/></g>
+    </g>
+    <g opacity=".92">
+      <rect x="0" y="560" width="300" height="40" fill="#4E7C3A"/>
+      <rect x="60" y="530" width="120" height="30" fill="#4E7C3A"/>
+      <rect x="380" y="580" width="340" height="30" fill="#487436"/>
+      <rect x="440" y="552" width="150" height="28" fill="#487436"/>
+      <rect x="880" y="566" width="400" height="34" fill="#4E7C3A"/>
+      <rect x="960" y="538" width="140" height="28" fill="#487436"/>
+    </g>
+    <g>
+      <rect x="1050" y="470" width="26" height="130" fill="#5E3D22"/>
+      <rect x="996" y="392" width="134" height="86" fill="url(#leafP)"/>
+      <rect x="1022" y="360" width="82" height="40" fill="url(#leafP)"/>
+    </g>
+    <rect x="0" y="640" width="1280" height="34" fill="url(#grassP)"/>
+    <rect x="0" y="674" width="1280" height="126" fill="url(#dirtP)"/>
+    <g opacity=".9">
+      <rect x="180" y="606" width="34" height="34" fill="url(#grassP)"/><rect x="180" y="640" width="34" height="34" fill="url(#dirtP)"/>
+      <rect x="1035" y="596" width="30" height="30" fill="url(#grassP)"/><rect x="1035" y="626" width="30" height="30" fill="url(#dirtP)"/>
+    </g>
+  </svg>
   <span class="px p1"><svg viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><rect width="8" height="8" fill="#57A64A"/><rect y="0" width="8" height="1" fill="#4C9340"/><rect y="7" width="8" height="1" fill="#4C9340"/><rect x="7" y="1" width="1" height="1" fill="#65B755"/><rect x="0" y="3" width="1" height="1" fill="#65B755"/><rect x="4" y="6" width="1" height="1" fill="#65B755"/><g fill="#1E2B1A"><rect x="1" y="2" width="2" height="2"/><rect x="5" y="2" width="2" height="2"/><rect x="3" y="4" width="2" height="2"/><rect x="2" y="5" width="1" height="3"/><rect x="5" y="5" width="1" height="3"/></g></svg></span>
-  <span class="px p2"><svg viewBox="0 0 100 116" shape-rendering="crispEdges" aria-hidden="true"><polygon points="50,0 100,29 50,58 0,29" fill="#7CBD51"/><polygon points="0,29 50,58 50,116 0,87" fill="#7A5230"/><polygon points="100,29 50,58 50,116 100,87" fill="#5E3D22"/><polygon points="0,29 50,58 50,66 0,37" fill="#6BA844"/><polygon points="100,29 50,58 50,66 100,37" fill="#5C9138"/><g fill="#8B6239" opacity=".85"><rect x="14" y="54" width="6" height="6"/><rect x="30" y="74" width="5" height="5"/><rect x="20" y="92" width="6" height="6"/></g><g fill="#4F3520" opacity=".85"><rect x="66" y="62" width="6" height="6"/><rect x="80" y="80" width="5" height="5"/><rect x="60" y="94" width="6" height="6"/></g><g fill="#93D661" opacity=".95"><rect x="40" y="12" width="6" height="6"/><rect x="62" y="22" width="5" height="5"/><rect x="26" y="26" width="5" height="5"/></g></svg></span>
   <span class="px p3"><svg viewBox="0 0 20 20" shape-rendering="crispEdges" aria-hidden="true"><polygon points="10,1 18,7 10,19 2,7" fill="#4AEDD9"/><polygon points="10,1 18,7 10,9 2,7" fill="#7DF5E6"/><polygon points="10,9 18,7 10,19" fill="#35C6B4"/><rect x="8" y="3" width="3" height="2" fill="#C8FFF8" opacity=".9"/></svg></span>
-  <span class="px p4"><svg viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><rect width="8" height="8" fill="#57A64A"/><rect x="3" y="0" width="1" height="8" fill="#4C9340"/><rect x="0" y="3" width="1" height="2" fill="#65B755"/><rect x="6" y="5" width="1" height="2" fill="#65B755"/><g fill="#1E2B1A"><rect x="1" y="2" width="2" height="2"/><rect x="5" y="2" width="2" height="2"/><rect x="3" y="4" width="2" height="2"/><rect x="2" y="5" width="1" height="3"/><rect x="5" y="5" width="1" height="3"/></g></svg></span>
-  <span class="px p5"><svg viewBox="0 0 20 20" shape-rendering="crispEdges" aria-hidden="true"><polygon points="10,1 18,7 10,19 2,7" fill="#4AEDD9"/><polygon points="10,1 18,7 10,9 2,7" fill="#7DF5E6"/><polygon points="10,9 18,7 10,19" fill="#35C6B4"/><rect x="7" y="11" width="2" height="2" fill="#C8FFF8" opacity=".85"/></svg></span>
 </div><div class="lg-box">
   <div class="lg-logo"><svg viewBox="0 0 100 116" shape-rendering="crispEdges" aria-hidden="true" style="width:70%;height:auto"><polygon points="50,0 100,29 50,58 0,29" fill="#7CBD51"/><polygon points="0,29 50,58 50,116 0,87" fill="#7A5230"/><polygon points="100,29 50,58 50,116 100,87" fill="#5E3D22"/><polygon points="0,29 50,58 50,66 0,37" fill="#6BA844"/><polygon points="100,29 50,58 50,66 100,37" fill="#5C9138"/><g fill="#93D661" opacity=".95"><rect x="40" y="12" width="6" height="6"/><rect x="62" y="22" width="5" height="5"/><rect x="26" y="26" width="5" height="5"/></g></svg></div>
   <h1>网易模组发布器</h1>
