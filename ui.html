@@ -136,10 +136,11 @@ aside{width:296px;min-width:264px;background:var(--card);
 .card:hover{box-shadow:var(--shadow-sm)}
 .card h3{font-size:13.5px;margin-bottom:12px;display:flex;align-items:center;
   gap:9px;color:var(--fg);cursor:pointer;user-select:none}
-.card h3:hover .fold{color:var(--accent)}
-.card h3 .fold{margin-left:auto;width:22px;height:22px;border-radius:6px;
-  display:flex;align-items:center;justify-content:center;font-size:11px;
-  color:var(--muted);transition:transform .2s,color .15s;flex-shrink:0}
+.card h3:hover .fold{color:var(--accent);background:var(--accweak)}
+.card h3 .fold{margin-left:auto;width:26px;height:26px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;font-size:14px;
+  color:var(--muted);flex-shrink:0;
+  transition:transform .2s,background .15s,color .15s}
 .card.folded>*:not(h3){display:none!important}
 .card.folded{padding-bottom:10px}
 .card.folded .fold{transform:rotate(-90deg)}
@@ -229,17 +230,40 @@ textarea{resize:vertical;min-height:56px;line-height:1.6}
 #docTools .sep{width:1px;height:18px;background:var(--line);margin:0 3px}
 #docTools .doctip{margin:0 4px 0 auto}
 /* ============ 全字段 ============ */
-#allfields{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+#allfields{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
   gap:8px 12px}
-.fgroup{grid-column:1/-1;font-size:11.5px;color:var(--muted);margin-top:4px;
-  font-weight:600;letter-spacing:.3px}
-.fitem{display:flex;flex-direction:column;gap:3px}
-.fitem .fk{font-size:11px;color:var(--muted);word-break:break-all;font-family:var(--mono)}
-.fitem input,.fitem textarea{font-size:12.5px;padding:6px 9px;border-radius:8px}
+.af-tools{display:flex;gap:8px;align-items:center;margin-top:10px}
+.af-tools input{flex:1;background:var(--input);border:1px solid var(--line);
+  border-radius:9px;padding:7px 11px;font-size:12.5px;color:var(--fg);
+  outline:none;font-family:inherit;transition:border-color .15s,box-shadow .15s}
+.af-tools input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accweak)}
+.fgroup{grid-column:1/-1;display:flex;align-items:center;gap:8px;margin-top:8px}
+.fgroup .gn{font-size:12px;font-weight:700;color:var(--fg)}
+.fgroup .gc{font-size:10.5px;color:var(--muted);background:var(--soft);
+  border-radius:8px;padding:1px 7px;font-variant-numeric:tabular-nums}
+.fgroup i{flex:1;height:1px;background:var(--line)}
+.fitem{display:flex;flex-direction:column;gap:3px;background:var(--soft);
+  border:1px solid var(--line);border-radius:9px;padding:7px 9px;
+  transition:border-color .15s,background .15s}
+.fitem:focus-within{border-color:var(--accent);background:var(--card)}
+.fitem.dirty{border-color:var(--ok)!important;background:var(--okweak)!important}
+.fitem .fk{font-size:10.5px;color:var(--muted);word-break:break-all;
+  font-family:var(--mono);display:flex;justify-content:space-between;gap:6px;
+  align-items:center}
+.fitem .fk em{font-style:normal;font-size:9px;color:var(--accent);
+  background:var(--accweak);border-radius:6px;padding:0 5px;flex-shrink:0}
+.fitem input,.fitem textarea{font-size:12px;padding:5px 8px;border-radius:7px;
+  background:var(--input);border:1px solid var(--line);color:var(--fg);
+  outline:none;width:100%;font-family:inherit;min-width:0;
+  transition:border-color .15s}
+.fitem input:focus,.fitem textarea:focus{border-color:var(--accent)}
+.fitem textarea{font-family:var(--mono);resize:vertical;min-height:34px;
+  line-height:1.5}
 details summary{cursor:pointer;font-size:12.5px;color:var(--muted);padding:4px 0;
   user-select:none;list-style:none;display:flex;align-items:center;gap:7px}
 details summary::-webkit-details-marker{display:none}
-details summary::before{content:"▸";transition:transform .15s;color:var(--muted)}
+details summary::before{content:"▸";transition:transform .15s;color:var(--muted);
+  font-size:13px}
 details[open] summary::before{transform:rotate(90deg)}
 details summary:hover{color:var(--accent)}
 /* ============ 底部自动化条 ============ */
@@ -545,6 +569,9 @@ details summary:hover{color:var(--accent)}
       <div class="ro" id="fGuides">—</div>
     </div>
     <details class="card"><summary>高级：全部字段（平台完整字段，改动同样生效）</summary>
+      <div class="af-tools"><input id="afKw"
+        placeholder="🔍 过滤字段名，如 price、tag、sync…">
+        <span class="doctip" id="afCnt"></span></div>
       <div id="allfields" style="margin-top:8px"></div>
     </details>
     </div>
@@ -906,17 +933,30 @@ const SECTIONS={"基本":["item_name","item_id","item_version","mod_id","vanity_
 function renderAllFields(){
   const box=$("allfields");box.innerHTML="";
   const used=new Set();Object.values(SECTIONS).forEach(a=>a.forEach(k=>used.add(k)));
+  const kw=($("afKw").value||"").trim().toLowerCase();
   const groups=Object.entries(SECTIONS).concat([
     ["资源包/其他",Object.keys(state.fields).filter(k=>!used.has(k))]]);
+  let shown=0,total=0;
   for(const[gname,keys]of groups){
-    const h=document.createElement("div");
-    h.className="fgroup";h.textContent="— "+gname;box.appendChild(h);
-    for(const k of keys){
-      if(!(k in state.fields))continue;
-      const d=document.createElement("div");d.className="fitem";
-      d.innerHTML="<div class='fk'>"+esc(k)+"</div>";
-      const inp=document.createElement("input");
+    const hits=keys.filter(k=>k in state.fields);
+    total+=hits.length;
+    const vis=hits.filter(k=>!kw||k.toLowerCase().includes(kw));
+    if(!vis.length)continue;
+    shown+=vis.length;
+    const h=document.createElement("div");h.className="fgroup";
+    h.innerHTML="<span class='gn'>"+esc(gname)+"</span><span class='gc'>"
+      +vis.length+"</span><i></i>";
+    box.appendChild(h);
+    for(const k of vis){
       const v=state.fields[k];
+      const d=document.createElement("div");d.className="fitem";
+      // 长/JSON 值自动换多行文本域，单行塞不下也看得清
+      const long=typeof v==="string"
+        &&(v.length>60||v.startsWith("{")||v.startsWith("["));
+      d.innerHTML="<div class='fk'><span>"+esc(k)+"</span>"
+        +(long?"<em>JSON</em>":"")+"</div>";
+      const inp=document.createElement(long?"textarea":"input");
+      if(long){inp.rows=2;inp.spellcheck=false}
       inp.value=(v===null||v===undefined)?"":String(v);
       inp.title=k;
       inp.oninput=()=>{
@@ -926,7 +966,12 @@ function renderAllFields(){
         updateDirtyBadge()};
       d.appendChild(inp);box.appendChild(d)}
   }
+  $("afCnt").textContent="显示 "+shown+" / "+total+" 项";
+  if(!shown){const d=document.createElement("div");d.className="nores";
+    d.textContent=kw?("无匹配字段（共 "+total+" 项）"):"（无字段）";
+    box.appendChild(d)}
 }
+$("afKw").addEventListener("input",renderAllFields);
 /* ---------- 文档编辑器 ---------- */
 function editorLen(html){
   html=html||"";

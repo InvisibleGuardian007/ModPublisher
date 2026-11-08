@@ -172,6 +172,16 @@ def main():
               .startswith("https"))
         check("攻略列表", "攻略A" in pg.text_content("#fGuides"))
         check("全字段渲染", pg.locator("#allfields .fitem").count() >= 31)
+        pg.evaluate(
+            "document.querySelector('#content details').setAttribute('open','')")
+        pg.wait_for_timeout(100)
+        pg.fill("#afKw", "price")
+        n_price = pg.locator("#allfields .fitem").count()
+        check("字段过滤price", 0 < n_price < 5, n_price)
+        check("过滤计数提示", "显示" in pg.text_content("#afCnt"),
+              pg.text_content("#afCnt"))
+        pg.fill("#afKw", "")
+        check("过滤清空还原", pg.locator("#allfields .fitem").count() >= 31)
         check("底栏作品名", "趣味附魔" in pg.text_content("#barMod"))
 
         # 3) 规范键脏值跟踪 + 改动徽标
