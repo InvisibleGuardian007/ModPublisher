@@ -747,6 +747,8 @@ body::before{z-index:0}
         <button class="pri" id="btnDoUpdate" style="display:none;padding:3px 12px;font-size:12px">立即更新</button>
         <span id="updTip" class="doctip"></span></div>
       <div class="about-row">手机端（同一局域网）：<span class="mono" id="webUrl">—</span></div>
+      <div class="about-row">安装：
+        <button class="ghost" id="btnAppInstall" style="padding:3px 12px;font-size:12px">📦 安装到系统（桌面/开始菜单快捷方式 + 卸载入口）</button></div>
       <div class="about-row"><a href="https://github.com/InvisibleGuardian007/ModPublisher"
         target="_blank" rel="noopener" style="color:var(--accent)">GitHub 仓库 / 给个 Star ⭐</a></div>
       <div class="ai-tip">本工具仅操作开发者本人账号下的作品；提审等不可逆动作均需人工确认。
@@ -988,6 +990,14 @@ $("btnCheckUpd").onclick=async()=>{
       log("已是最新版本")}}
   catch(e){t.textContent="检查失败："+e.message}
   b.disabled=false};
+$("btnAppInstall").onclick=async()=>{
+  const b=$("btnAppInstall"),old=b.textContent;
+  b.disabled=true;b.textContent="安装中…";
+  try{
+    const r=await py("app_install",{});
+    b.textContent="✓ 已安装，之后从桌面/开始菜单启动";
+    log("已安装 ✓ "+r.steps.join("；"))}
+  catch(e){log(e.message,1);b.textContent=old;b.disabled=false}};
 $("btnDoUpdate").onclick=async()=>{
   if(!confirm("下载新版本并自动重启安装？\n（下载后自动校验 SHA256，失败会取消）"))return;
   const b=$("btnDoUpdate");

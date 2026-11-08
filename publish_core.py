@@ -238,6 +238,16 @@ class BrowserEngine(object):
             pass
         self.emit("browser_up", None)
 
+    @staticmethod
+    def _ui_uri():
+        """ui.html 的 file URI（frozen 时在 _MEIPASS 解包目录）。
+        启动参数用它走 --app 模式：窗口无标签页/地址栏，像桌面应用。"""
+        if getattr(sys, "frozen", False):
+            p = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "ui.html"
+        else:
+            p = Path(__file__).resolve().parent / "ui.html"
+        return p.as_uri() if p.exists() else "about:blank"
+
     def _ensure_browser(self):
         if self._ctx:
             return
@@ -264,7 +274,7 @@ class BrowserEngine(object):
                 "--no-default-browser-check"]
         if bool(self.cfg.get("headless_browser", False)):
             args.append("--headless=new")
-        args.append("about:blank")
+        args.append("--app=" + self._ui_uri())
         self._popped = True
         subprocess.Popen(args, creationflags=CREATE_NO_WINDOW)
         if not self._cdp_alive(30):

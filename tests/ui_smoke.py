@@ -85,6 +85,8 @@ STUB = """(()=>{window.__pyRequest=(action,payloadJson,id)=>{
       digest:"sha256:x"},
     url:"https://github.com/InvisibleGuardian007/ModPublisher/releases/latest"};
   else if(action==="do_update")data={restarting:true,version:"26.12.0"};
+  else if(action==="app_install")data={steps:["程序已复制","快捷方式已创建"],
+    exe:"C:/x/网易模组发布器.exe",installed:true};
   else if(action==="cfg_save")data={local:{}};
   else data={ok:true};
   setTimeout(()=>window.__pyResolve(id,JSON.stringify({ok:true,data:data})),10);}})()
@@ -267,6 +269,11 @@ def main():
         pg.wait_for_timeout(200)
         check("热更新触发重启", pg.text_content("#btnDoUpdate") == "重启中…")
         pg.evaluate("localStorage.removeItem('t_upd')")
+        # 应用内自安装（桩）
+        pg.click("#btnAppInstall")
+        pg.wait_for_timeout(200)
+        check("自安装完成", "已安装" in pg.text_content("#btnAppInstall"),
+              pg.text_content("#btnAppInstall"))
         pg.click("#aiX")
         check("AI弹窗关闭", pg.get_attribute("#aiModal", "style").find("none") >= 0)
         pg.click("#btnNoteAi")

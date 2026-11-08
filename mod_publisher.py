@@ -17,7 +17,7 @@ from pathlib import Path
 import publish_api as PA
 import publish_core as core
 
-APP_VERSION = "26.11.9"
+APP_VERSION = "26.11.10"
 REPO_URL = "https://github.com/InvisibleGuardian007/ModPublisher"
 
 try:
@@ -972,6 +972,75 @@ class Host(object):
             os._exit(0)
         threading.Timer(1.0, _install).start()   # 留出 RPC 响应返回时间
         return {"restarting": True, "version": tag}
+
+    def rpc_app_install(self, _p):
+        """应用内自安装：复制到 LOCALAPPDATA/Programs、创建桌面/开始菜单
+        快捷方式、注册「应用和功能」卸载入口。"""
+        import shutil
+        if not getattr(sys, "frozen", False):
+            raise RuntimeError("开发模式无需安装：源码直接跑 启动发布器.bat")
+        exe = Path(sys.executable).resolve()
+        tdir = Path(os.environ.get("LOCALAPPDATA", exe.parent)) / "Programs" / "ModPublisher"
+        tdir.mkdir(parents=True, exist_ok=True)
+        steps = []
+        dst = tdir / exe.name
+        if exe.parent.resolve() != tdir.resolve():
+            try:
+                shutil.copy2(exe, dst)
+                steps.append("程序已复制到 %s" % tdir)
+            except Exception as e:
+                if not dst.exists():
+                    raise RuntimeError("复制程序失败：%s" % e)
+                steps.append("目标已有同名程序，跳过复制")
+        exe_ref = dst if dst.exists() else exe
+        unins = tdir / "卸载ModPublisher.ps1"
+        unins.write_text(
+            "$exe='%s'\n"
+            "Get-Process | Where-Object {$_.Path -eq $exe} | Stop-Process -Force\n"
+            "Start-Sleep 1\n"
+            "Remove-Item -Recurse -Force '%s'\n"
+            "Remove-Item -LiteralPath '%s' -ErrorAction SilentlyContinue\n"
+            % (exe_ref, tdir,
+               r"HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ModPublisher"),
+            encoding="utf-8")
+        ps = r'''
+$ws = New-Object -ComObject WScript.Shell
+$dt = [Environment]::GetFolderPath('Desktop')
+$l1 = $ws.CreateShortcut("$dt\网易模组发布器.lnk")
+$l1.TargetPath = "{exe}"; $l1.WorkingDirectory = "{dir}"; $l1.Save()
+$sm = [Environment]::GetFolderPath('StartMenu') + "\Programs\网易模组发布器"
+New-Item -ItemType Directory -Force -Path $sm | Out-Null
+$l2 = $ws.CreateShortcut("$sm\网易模组发布器.lnk")
+$l2.TargetPath = "{exe}"; $l2.WorkingDirectory = "{dir}"; $l2.Save()
+$k = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ModPublisher"
+New-Item -Force -Path $k | Out-Null
+Set-ItemProperty $k -Name DisplayName -Value "网易模组发布器"
+Set-ItemProperty $k -Name DisplayVersion -Value "{ver}"
+Set-ItemProperty $k -Name DisplayIcon -Value "{exe}"
+Set-ItemProperty $k -Name InstallLocation -Value "{dir}"
+Set-ItemProperty $k -Name UninstallString -Value 'powershell -ExecutionPolicy Bypass -File "{unins}"'
+Set-ItemProperty $k -Name NoModify -Value 1 -Type DWord
+Set-ItemProperty $k -Name NoRepair -Value 1 -Type DWord
+'''.format(exe=exe_ref, dir=tdir, ver=APP_VERSION, unins=unins)
+        f = Path(tempfile.gettempdir()) / ("mp_install_%d.ps1" % time.time_ns())
+        f.write_text(ps, encoding="utf-8-sig")   # BOM 保证 PS5.1 正确读中文
+        try:
+            r = subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                 "-File", str(f)],
+                capture_output=True, text=True, timeout=60,
+                creationflags=core.CREATE_NO_WINDOW)
+        finally:
+            try:
+                f.unlink()
+            except Exception:
+                pass
+        if r.returncode != 0:
+            raise RuntimeError("创建快捷方式失败：%s" % (r.stderr or r.stdout)[:200])
+        steps.append("桌面/开始菜单快捷方式已创建")
+        steps.append("已注册到「应用和功能」，可随时卸载")
+        self.js_log("[安装] " + "；".join(steps))
+        return {"steps": steps, "exe": str(exe_ref), "installed": True}
 
     # ---------- 高层操作（CLI / HTTP API 共用，均在引擎线程执行） ----------
     def h_set(self, name, changes):
