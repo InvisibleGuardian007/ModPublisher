@@ -70,9 +70,9 @@ class Api(object):
         self._page = None   # 停靠页（停留在 https://mcdev.webapp.163.com/）
 
     def set_context(self, ctx, page=None):
+        """page：可选的停靠页兜底通道（正常情况无需任何可见页面）。"""
         self._ctx = ctx
-        if page is not None:
-            self._page = page
+        self._page = page
 
     def ready(self):
         return self._ctx is not None
@@ -101,7 +101,16 @@ class Api(object):
         headers = {"Accept": "application/json, text/plain, */*"}
         if data is not None:
             headers["Content-Type"] = "application/json"  # 缺失时服务端解析body为空
-        if self._page is not None:
+        # 主通道：ctx.request（与浏览器共享 Cookie 罐，无需任何可见页面）
+        try:
+            rr = self._ctx.request.fetch(
+                url, method=method, data=data, headers=headers,
+                fail_on_status_code=False, timeout=timeout)
+            status, body = rr.status, rr.text()
+        except Exception as e:
+            if self._page is None:
+                raise
+            self.log("ctx.request 异常(%s)，转停靠页 fetch 兜底" % str(e)[:80])
             r = self._page.evaluate(
                 "async ([method, url, body, headers]) => {"
                 "const opt = {method: method, credentials: 'include', headers: headers};"
@@ -110,11 +119,6 @@ class Api(object):
                 "return {status: r.status, text: await r.text()};}",
                 [method, url, data, headers])
             status, body = r["status"], r["text"]
-        else:
-            rr = self._ctx.request.fetch(
-                url, method=method, data=data, headers=headers,
-                fail_on_status_code=False, timeout=timeout)
-            status, body = rr.status, rr.text()
         try:
             j = json.loads(body)
         except ValueError:
@@ -235,23 +239,19 @@ class Api(object):
         data = Path(file_path).read_bytes()
         name = Path(file_path).name
         status, body, sign = 0, "", None
-        if len(data) > self._PAGE_UPLOAD_MAX:
-            try:
-                status, body, sign = self._ctx_upload(upload_url, token, name,
-                                                      mime, data)
-            except Exception as e:
-                self.log("大文件 ctx.request 直传异常(%s)，转页面通道" % str(e)[:80])
+        # 主通道：ctx.request 直传（Cookie 共享、响应头可读、无页面依赖）
+        try:
+            status, body, sign = self._ctx_upload(upload_url, token, name,
+                                                  mime, data)
+        except Exception as e:
+            self.log("ctx.request 直传异常(%s)" % str(e)[:80])
+        # 兜底：停靠页 fetch（仅在页面存在且签名缺失时）
         if (status != 200 or not sign) and self._page is not None:
             try:
                 status, body, sign = self._page_upload(upload_url, token, name,
                                                        mime, data)
             except Exception as e:
-                # 大文件 base64 可能超 CDP 载荷上限/页面超时：直接落回退通道
-                self.log("页面直传异常(%s)，转 ctx.request 回退" % str(e)[:80])
-        if status != 200 or not sign:
-            # 回退：ctx.request 直传（部分响应头跨域不可读时）
-            status, body, sign = self._ctx_upload(upload_url, token, name,
-                                                  mime, data)
+                self.log("页面直传兜底异常(%s)" % str(e)[:80])
         if status != 200:
             raise ApiError("上传HTTP %s: %s" % (status, body[:200]))
         if not sign:
