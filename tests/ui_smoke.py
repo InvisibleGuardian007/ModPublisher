@@ -48,7 +48,7 @@ STUB = """(()=>{window.__pyRequest=(action,payloadJson,id)=>{
   if(action==="boot")data={
     profile:{nickname:"测试者",avatar:null},
     rows:%(rows)s,
-    local:{"趣味附魔 - 共162个附魔":{id:"趣味附魔",version:"26.10.26",
+    local:{"趣味附魔 - 共162个附魔":{id:"趣味附魔",version:"26.99.1",
       count:162,name_suggest:"趣味附魔 - 共242个附魔",
       note_suggest:"26.10.26更新：新增10个附魔；修复若干问题"}}};
   else if(action==="read_item")data={
@@ -129,6 +129,8 @@ def main():
         check("状态药丸-上架绿", pg.locator(".item").nth(0).locator(".pill.on").count() == 1)
         check("状态药丸-审核蓝", pg.locator(".item").nth(1).locator(".pill.rev").count() == 1)
         check("状态药丸-驳回红", pg.locator(".item").nth(2).locator(".pill.bad").count() == 1)
+        check("登录按钮状态化", "ghost" in (pg.get_attribute("#btnLogin", "class") or "")
+              and "重新登录" in pg.text_content("#btnLogin"))
         check("本地标记", pg.locator(".item").nth(0).locator(".pill.loc").count() == 1)
         check("欢迎空态显示", pg.locator("#welcome").is_visible())
         check("编辑区隐藏", not pg.locator("#editor").is_visible())
@@ -146,6 +148,8 @@ def main():
         check("定价胶囊", "第3档" in pg.text_content("#fPrice"))
         check("攻略胶囊x2", pg.locator("#fGuides .chip.guide").count() == 2)
         check("PC简介并入纪要卡", pg.locator("#fPcIntro").is_visible())
+        check("本地领先提示", "本地版本领先" in pg.text_content("#iteminfo"),
+              pg.text_content("#iteminfo"))
         check("详情编辑器白纸", pg.evaluate(
             "getComputedStyle(document.getElementById('doc')).backgroundColor")
             == "rgb(255, 255, 255)")
@@ -182,6 +186,16 @@ def main():
               .get_attribute("class") or ""))
         pg.evaluate("document.querySelectorAll('#content .card h3')[0].click()")
         check("卡片可展开", pg.locator("#fName").is_visible())
+
+        # 3.8) 编辑器全屏模式（⛶ / Esc 退出）
+        dh0 = pg.evaluate("document.getElementById('doc').getBoundingClientRect().height")
+        pg.click("#tFull")
+        dh = pg.evaluate("document.getElementById('doc').getBoundingClientRect().height")
+        check("编辑器全屏", dh > dh0 * 1.4, (dh0, dh))
+        pg.keyboard.press("Escape")
+        pg.wait_for_timeout(120)
+        dh2 = pg.evaluate("document.getElementById('doc').getBoundingClientRect().height")
+        check("全屏Esc退出", dh2 < 600, dh2)
         check("计数器图数", "10/10" in pg.text_content("#docCnt"))
         check("详情10图", pg.locator("#doc img").count() == 10)
         check("槽位=1ICON+2手机+1PC", pg.locator("#slots .slot").count() == 4)
@@ -444,6 +458,21 @@ def main():
         pg.set_viewport_size({"width": 1366, "height": 950})
         pg.wait_for_timeout(300)
         check("宽窗汉堡隐藏", not pg.locator("#btnNav").is_visible())
+
+        # 14.5) 手机 390：底栏折叠为「⋯ 更多」
+        pg.set_viewport_size({"width": 390, "height": 844})
+        pg.wait_for_timeout(300)
+        check("手机更多按钮", pg.locator("#barMoreToggle").is_visible())
+        check("次要操作默认收起", not pg.locator("#bName").is_visible())
+        pg.click("#barMoreToggle")
+        pg.wait_for_timeout(150)
+        check("更多面板展开", "barmore" in pg.evaluate("document.body.className")
+              and pg.locator("#bName").is_visible())
+        pg.click("#barMoreToggle")
+        pg.wait_for_timeout(150)
+        check("更多面板收起", not pg.locator("#bName").is_visible())
+        pg.set_viewport_size({"width": 1366, "height": 950})
+        pg.wait_for_timeout(200)
 
         # 15) 登录门：未登录桩（第二页面）→ 品牌登录页；登录后进入
         stub2 = STUB.replace('profile:{nickname:"测试者",avatar:null}',

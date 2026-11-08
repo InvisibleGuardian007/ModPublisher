@@ -285,6 +285,8 @@ details summary:hover{color:var(--accent)}
   padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap;
   font-variant-numeric:tabular-nums}
 .bar-sep{width:1px;height:22px;background:var(--line);flex-shrink:0}
+#barMore{display:contents}   /* 桌面：包装层透明，按钮原样参与底栏布局 */
+#barMoreToggle{display:none}
 #bRun{padding:8px 18px;font-size:13.5px}
 #bar .msg{margin-left:auto;color:var(--muted);font-size:12px;max-width:34%;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -433,6 +435,17 @@ details summary:hover{color:var(--accent)}
   padding-top:10px;margin-top:14px;flex-wrap:wrap}
 #genModal .ai-tip{font-size:11px;color:var(--muted);line-height:1.7;margin-top:11px}
 #genSlotList{display:none;flex-wrap:wrap;gap:6px;margin-top:9px}
+/* ============ 详情编辑器全屏模式 ============ */
+body.doc-full .content{overflow:hidden}
+body.doc-full #docCard{position:fixed;inset:0;z-index:250;margin:0;
+  border-radius:0;display:flex;flex-direction:column;max-height:none;
+  padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+body.doc-full #docCard h3{flex-shrink:0;margin-bottom:8px;pointer-events:none}
+body.doc-full #docCard h3 .fold{display:none}
+body.doc-full #docCard #docTools{flex-shrink:0}
+body.doc-full #docCard #doc{flex:1;min-height:0;max-height:none}
+body.doc-full #docCard .doctip,
+body.doc-full #docCard>div:last-child{flex-shrink:0}
 /* ============ 登录门（专属 exe 启动流：先登录后进入） ============ */
 #loginGate{position:fixed;inset:0;z-index:500;background:var(--bg);display:none;
   align-items:center;justify-content:center}
@@ -489,9 +502,25 @@ body::before{z-index:0}
 @media (max-width:700px){
   #bar .api{display:none}
   #bar .msg{max-width:100%;width:100%;margin-left:0;order:9}
+  .brand{display:none}
+  header{padding:8px 10px;gap:7px}
+  .avatar,.avatar-fb{width:32px;height:32px;font-size:14px;
+    box-shadow:0 0 0 2px var(--card),0 0 0 3px var(--accweak)}
+  .who b{font-size:13.5px;display:block;max-width:30vw;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+  button.ghost,button.pri{padding:6px 9px;font-size:12px}
+  #btnTheme{max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ghbtn{width:34px;height:30px}
+  button.iconbtn{width:32px;height:30px;font-size:13px}
+  /* 底栏：主操作 + ⋯ 更多展开 */
+  #barMore{display:none}
+  body.barmore #barMore{display:flex;flex-basis:100%;flex-wrap:wrap;gap:7px;
+    padding-top:8px;border-top:1px solid var(--line)}
+  #barMoreToggle{display:inline-flex;padding:6px 11px}
   .frow>label{width:100%;min-width:0;margin-bottom:-3px}
   .slot .empty,.slot>img,.slot .imgw img,.slot .ovl{height:76px}
 }
+@media (min-width:701px){#barMore{display:contents}}
 .ll{padding:1px 0}
 .ll.err{color:#ff9a9a}
 .ll.ok{color:#71d9a3}
@@ -560,7 +589,7 @@ body::before{z-index:0}
         <span id="cnt"></span>
         <button class="ghost iconbtn" id="btnMap2" title="本地项目映射" style="width:26px;height:24px;font-size:12px">⚙</button>
       </span></div>
-    <div class="search"><span>🔍</span><input id="kw" placeholder="搜索模组…（按 / 聚焦）"></div>
+    <div class="search"><span>🔍</span><input id="kw" type="search" placeholder="搜索模组…（按 / 聚焦）"></div>
     <div id="list"></div>
     <div id="iteminfo">选中作品后显示</div>
     <button class="ghost" id="btnMap" style="margin:8px 12px">⚙ 本地项目映射…</button>
@@ -588,7 +617,7 @@ body::before{z-index:0}
       <div class="frow"><label>资源定价 <a href="javascript:void(0)" class="editlink"
         data-key="price" title="平台定价为结构化档位：点此在高级字段中修改 price_rank / price">✏️</a></label><div class="ro" id="fPrice">—</div></div>
     </div>
-    <div class="card"><h3><span class="ic">📝</span>详情介绍（双端共用）
+    <div class="card" id="docCard"><h3><span class="ic">📝</span>详情介绍（双端共用）
       <span class="tip">直接编辑；拖拽 / 粘贴图片自动上传插入</span><span class="fold">▾</span></h3>
       <div id="docTools">
         <select id="tBlock">
@@ -609,6 +638,7 @@ body::before{z-index:0}
         <button id="tPhone" title="手机端预览（实时同步）">📱</button>
         <span class="sep"></span>
         <button id="tClear" title="清除格式">✕格式</button>
+        <button id="tFull" title="全屏编辑（Esc 退出）">⛶</button>
         <span class="doctip">选中文字后点击生效；图片支持拖拽/粘贴</span>
       </div>
       <div id="doc" contenteditable="true" data-ph="输入详情介绍，或直接拖入 / 粘贴图片…"></div>
@@ -777,12 +807,15 @@ body::before{z-index:0}
   <span class="tag" id="barMod">未选择作品</span>
   <span id="dirtyBadge" style="display:none"></span>
   <span class="bar-sep"></span>
-  <button class="ghost" id="bName">建议名称</button>
-  <button class="ghost" id="bNote">生成纪要</button>
-  <span class="bar-sep"></span>
-  <button id="bPack">📦 打包上传+提升版本</button>
+  <span id="barMore">
+    <button class="ghost" id="bName">建议名称</button>
+    <button class="ghost" id="bNote">生成纪要</button>
+    <span class="bar-sep"></span>
+    <button id="bPack">📦 打包上传+提升版本</button>
+  </span>
   <button class="pri" id="bRun" title="Ctrl+S">🚀 一键保存（全部改动）</button>
   <button class="warn" id="bSubmit">✅ 提交审核</button>
+  <button class="ghost" id="barMoreToggle" title="更多操作">⋯</button>
   <span class="msg" id="msg"></span><span class="api">Agent API :8765</span>
 </div>
 <div id="phoneBox">
@@ -1140,6 +1173,13 @@ function renderList(){
 function renderInfo(){
   const r=state.rows.find(x=>x.name===state.sel);
   const L=state.local[state.sel],c=state.cur;
+  // 本地版本领先平台 → 提示可发布
+  const lead=(L&&c&&L.version&&c.res_version&&
+    (function(a,b){const pa=a.split(".").map(x=>parseInt(x)||0),
+      pb=b.split(".").map(x=>parseInt(x)||0);
+      for(let i=0;i<3;i++){if((pa[i]||0)!==(pb[i]||0))return(pa[i]||0)>(pb[i]||0)}
+      return false})(L.version,String(c.res_version)))
+    ?"<div class='irow'><span></span><b style='color:var(--ok)'>⬆ 本地版本领先，可发布</b></div>":"";
   $("iteminfo").innerHTML=(r?
     "<div class='irow'><span>资源ID</span><b>"+esc(r.rid)+"</b></div>"+
     "<div class='irow'><span>发布</span><b>"+esc(String(r.publish||"—").slice(0,16))+"</b></div>"+
@@ -1147,7 +1187,8 @@ function renderInfo(){
     (L?"<div class='irow'><span>本地</span><b>"+esc(L.id)+" v"+esc(L.version||"?")+"</b></div>"
       +(L.count!=null?"<div class='irow'><span>本地内容</span><b>"+L.count+" 项</b></div>":"")
       :"<div class='irow'><span>本地</span><span style='color:var(--warn)'>未绑定 <a href='javascript:void(0)' id='bindLink' style='color:var(--accent);cursor:pointer'>＋ 绑定</a></span></div>"):"")
-    +(c&&c.mod_code?"<div class='irow'><span>模组码</span><b>"+esc(c.mod_code)+"</b></div>":"");
+    +(c&&c.mod_code?"<div class='irow'><span>模组码</span><b>"+esc(c.mod_code)+"</b></div>":"")
+    +lead;
 }
 async function selectItem(name,force){
   // 点了作品就先收抽屉（窄窗）；守卫拒绝切换时也保持收起
@@ -1302,6 +1343,7 @@ $("tLink").onclick=()=>{
   const url=prompt("链接地址（http(s)://…）");
   if(url)document.execCommand("createLink",false,url)};
 $("tClear").onclick=()=>{document.execCommand("removeFormat");updateCnt()};
+$("tFull").onclick=()=>{document.body.classList.toggle("doc-full")};
 $("imgPicker").onchange=async()=>{for(const f of $("imgPicker").files)await insertImageFile(f);
   $("imgPicker").value=""};
 ["dragover","dragenter","dragleave","drop"].forEach(ev=>
@@ -1340,6 +1382,9 @@ async function refreshAll(){
     gate.style.display="none";
     state.profile=d.profile;state.rows=d.rows;state.local=d.local;
     $("nick").textContent=(d.profile&&d.profile.nickname)||"未登录";
+    // 登录按钮状态化：已登录降级为次要「重新登录」
+    $("btnLogin").textContent=d.profile?"重新登录":"登录平台";
+    $("btnLogin").className=d.profile?"ghost":"pri";
     $("stTxt").textContent=d.profile?"已登录":"未登录";
     $("dot").className="dot"+(d.profile?" on":"");
     $("avatar").textContent=((d.profile&&d.profile.nickname)||"客").slice(0,1);
@@ -1600,6 +1645,8 @@ document.addEventListener("keydown",e=>{
     if($("mapModal").style.display==="flex")$("mClose").click();
     else if($("aiModal").style.display==="flex")$("aiX").click();
     else if($("genModal").style.display==="flex")$("genX").click();
+    else if(document.body.classList.contains("doc-full"))
+      document.body.classList.remove("doc-full");
     else if($("phoneBox").classList.contains("open"))$("phClose").click();
     else if(document.body.classList.contains("nav-open"))
       document.body.classList.remove("nav-open");
@@ -1686,7 +1733,10 @@ function applyTheme(t){
 $("btnTheme").onclick=()=>{
   applyTheme((document.documentElement.style.getPropertyValue("--theme")
     ||"light")==="light"?"dark":"light")};
-try{const t=localStorage.getItem("mp_theme");if(t)applyTheme(t)}catch(_){}
+$("barMoreToggle").onclick=()=>document.body.classList.toggle("barmore");
+try{const t=localStorage.getItem("mp_theme");
+  applyTheme(t||(window.matchMedia
+    &&matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"))}catch(_){}
 /* ---------- 引擎推送（打包/直传进度；frac=null+msg=不确定态） ---------- */
 window.__mpEvent=(k,j)=>{
   if(k==="pack_progress"||k==="update_progress"){
