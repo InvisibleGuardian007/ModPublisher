@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>网易模组发布器</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%AE%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="favicon.ico">
 <style>
 /* ============ 设计令牌（浅色为默认值，暗色由 JS 全量覆盖） ============ */
 :root{--bg:#f4f6fa;--card:#ffffff;--line:#e6eaf1;--fg:#1c2130;--muted:#7c8598;
@@ -458,20 +458,19 @@ body::before{z-index:0}
     color-mix(in srgb,var(--muted) 9%,transparent) 31px 32px),
   repeating-linear-gradient(90deg,transparent 0 31px,
     color-mix(in srgb,var(--muted) 9%,transparent) 31px 32px)}
-/* 漂浮的 MC 方块/道具 */
+/* 漂浮的 MC 像素元素（苦力怕/草方块/钻石，SVG 像素画） */
 #loginGate .px-deco{position:absolute;inset:0;overflow:hidden;pointer-events:none}
 #loginGate .px{position:absolute;user-select:none;
-  animation:floaty 6s ease-in-out infinite}
-#loginGate .px.p1{left:7%;top:15%;font-size:66px;opacity:.17}
-#loginGate .px.p2{left:16%;top:64%;font-size:46px;opacity:.15;animation-delay:-2s}
-#loginGate .px.p3{right:11%;top:18%;font-size:60px;opacity:.19;animation-delay:-1s;
+  animation:floaty 6s ease-in-out infinite;
+  filter:drop-shadow(0 10px 24px rgba(0,0,0,.35))}
+#loginGate .px svg{display:block;width:100%;height:auto}
+#loginGate .px.p1{left:6%;top:11%;width:168px;opacity:.8}
+#loginGate .px.p2{right:8%;top:14%;width:150px;opacity:.75;animation-delay:-2s;
   animation-duration:7s}
-#loginGate .px.p4{right:19%;top:68%;font-size:44px;opacity:.15;animation-delay:-3s}
-#loginGate .px.p5{left:27%;top:82%;font-size:42px;opacity:.13;animation-delay:-1.5s}
-#loginGate .px.p6{right:31%;top:9%;font-size:38px;opacity:.13;animation-delay:-2.5s}
-#loginGate .px.p7{left:42%;top:7%;font-size:34px;opacity:.11;animation-delay:-4s}
-#loginGate .px.p8{right:5%;top:46%;font-size:50px;opacity:.13;animation-delay:-.5s;
-  animation-duration:5s}
+#loginGate .px.p3{left:12%;top:66%;width:120px;opacity:.7;animation-delay:-3.5s;
+  animation-duration:5.5s}
+#loginGate .px.p4{right:13%;top:64%;width:104px;opacity:.65;animation-delay:-1.2s}
+#loginGate .px.p5{left:30%;top:84%;width:84px;opacity:.5;animation-delay:-1.8s}
 #loginGate .lg-box{position:relative;text-align:center;max-width:430px;padding:26px;
   animation:pop .25s ease}
 #loginGate .lg-logo{width:82px;height:82px;margin:0 auto 16px;border-radius:22px;
@@ -816,10 +815,11 @@ body::before{z-index:0}
   </div>
 </div>
 <div id="loginGate"><div class="px-deco">
-  <span class="px p1">🟩</span><span class="px p2">⛏️</span>
-  <span class="px p3">💎</span><span class="px p4">🌱</span>
-  <span class="px p5">🧱</span><span class="px p6">🔥</span>
-  <span class="px p7">🪵</span><span class="px p8">🟫</span>
+  <span class="px p1"><svg viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><rect width="8" height="8" fill="#57A64A"/><rect y="0" width="8" height="1" fill="#4C9340"/><rect y="7" width="8" height="1" fill="#4C9340"/><rect x="7" y="1" width="1" height="1" fill="#65B755"/><rect x="0" y="3" width="1" height="1" fill="#65B755"/><rect x="4" y="6" width="1" height="1" fill="#65B755"/><g fill="#1E2B1A"><rect x="1" y="2" width="2" height="2"/><rect x="5" y="2" width="2" height="2"/><rect x="3" y="4" width="2" height="2"/><rect x="2" y="5" width="1" height="3"/><rect x="5" y="5" width="1" height="3"/></g></svg></span>
+  <span class="px p2"><svg viewBox="0 0 100 116" shape-rendering="crispEdges" aria-hidden="true"><polygon points="50,0 100,29 50,58 0,29" fill="#7CBD51"/><polygon points="0,29 50,58 50,116 0,87" fill="#7A5230"/><polygon points="100,29 50,58 50,116 100,87" fill="#5E3D22"/><polygon points="0,29 50,58 50,66 0,37" fill="#6BA844"/><polygon points="100,29 50,58 50,66 100,37" fill="#5C9138"/><g fill="#8B6239" opacity=".85"><rect x="14" y="54" width="6" height="6"/><rect x="30" y="74" width="5" height="5"/><rect x="20" y="92" width="6" height="6"/></g><g fill="#4F3520" opacity=".85"><rect x="66" y="62" width="6" height="6"/><rect x="80" y="80" width="5" height="5"/><rect x="60" y="94" width="6" height="6"/></g><g fill="#93D661" opacity=".95"><rect x="40" y="12" width="6" height="6"/><rect x="62" y="22" width="5" height="5"/><rect x="26" y="26" width="5" height="5"/></g></svg></span>
+  <span class="px p3"><svg viewBox="0 0 20 20" shape-rendering="crispEdges" aria-hidden="true"><polygon points="10,1 18,7 10,19 2,7" fill="#4AEDD9"/><polygon points="10,1 18,7 10,9 2,7" fill="#7DF5E6"/><polygon points="10,9 18,7 10,19" fill="#35C6B4"/><rect x="8" y="3" width="3" height="2" fill="#C8FFF8" opacity=".9"/></svg></span>
+  <span class="px p4"><svg viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><rect width="8" height="8" fill="#57A64A"/><rect x="3" y="0" width="1" height="8" fill="#4C9340"/><rect x="0" y="3" width="1" height="2" fill="#65B755"/><rect x="6" y="5" width="1" height="2" fill="#65B755"/><g fill="#1E2B1A"><rect x="1" y="2" width="2" height="2"/><rect x="5" y="2" width="2" height="2"/><rect x="3" y="4" width="2" height="2"/><rect x="2" y="5" width="1" height="3"/><rect x="5" y="5" width="1" height="3"/></g></svg></span>
+  <span class="px p5"><svg viewBox="0 0 20 20" shape-rendering="crispEdges" aria-hidden="true"><polygon points="10,1 18,7 10,19 2,7" fill="#4AEDD9"/><polygon points="10,1 18,7 10,9 2,7" fill="#7DF5E6"/><polygon points="10,9 18,7 10,19" fill="#35C6B4"/><rect x="7" y="11" width="2" height="2" fill="#C8FFF8" opacity=".85"/></svg></span>
 </div><div class="lg-box">
   <div class="lg-logo">🎮</div>
   <h1>网易模组发布器</h1>
